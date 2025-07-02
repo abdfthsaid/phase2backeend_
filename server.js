@@ -119,4 +119,8 @@ app.post('/api/pay', async (req, res) => {
   }
 });
 
+app.get("/", (req, res) => {
+  res.send("🚀 Waafi backend is running!");
+});
+
 app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
