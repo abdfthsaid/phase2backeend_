@@ -1,20 +1,10 @@
-import dotenv from "dotenv";
-dotenv.config();
+require("dotenv").config();
+const express = require("express");
+const axios = require("axios");
+const cors = require("cors");
+const bodyParser = require("body-parser");
+const { v4: uuidv4 } = require("uuid");
 
-import express from "express";
-import axios from "axios";
-import cors from "cors";
-import bodyParser from "body-parser";
-import { v4 as uuidv4 } from "uuid";
-
-// Routes
-import stationRoutes from "./routes/stationRoutes.js";
-import rentalRoutes from "./routes/rentalRoutes.js";
-import statsRoutes from "./routes/statsRoutes.js";
-import updateStationStats from "./jobs/station_stats.js";
-import customerRoutes from "./routes/customers.js";
-
-// Load .env values
 const {
   PORT = 3000,
   HEYCHARGE_API_KEY,
@@ -30,28 +20,27 @@ const {
   STATION_DILEK_SOMALIA,
 } = process.env;
 
-// Express app setup
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// 📍 Station code -> IMEI map
+// ✅ Map station code to IMEI
 const stationImeisByCode = {
-  58: STATION_CASTELLO_TALEEX,
+  "58": STATION_CASTELLO_TALEEX,
   "02": STATION_CASTELLO_BOONDHERE,
   "03": STATION_JAVA_TALEEX,
   "04": STATION_JAVA_AIRPORT,
   "05": STATION_DILEK_SOMALIA,
 };
 
-// 🔋 Get available battery
+// ✅ Get the best battery ≥ 60%
 async function getAvailableBattery(imei) {
   const url = `${HEYCHARGE_DOMAIN}/v1/station/${imei}`;
-  const res = await axios.get(url, {
+  const response = await axios.get(url, {
     auth: { username: HEYCHARGE_API_KEY, password: "" },
   });
 
-  const batteries = res.data.batteries.filter(
+  const batteries = response.data.batteries.filter(
     (b) =>
       b.lock_status === "1" &&
       parseInt(b.battery_capacity) >= 60 &&
@@ -62,26 +51,23 @@ async function getAvailableBattery(imei) {
   batteries.sort(
     (a, b) => parseInt(b.battery_capacity) - parseInt(a.battery_capacity)
   );
-
   return batteries[0];
 }
 
-// 🔓 Unlock battery
+// ✅ Unlock the battery slot
 async function releaseBattery(imei, battery_id, slot_id) {
   const url = `${HEYCHARGE_DOMAIN}/v1/station/${imei}`;
-  const res = await axios.post(url, null, {
+  const response = await axios.post(url, null, {
     auth: { username: HEYCHARGE_API_KEY, password: "" },
     params: { battery_id, slot_id },
   });
-  return res.data;
+  return response.data;
 }
-
-// 🌐 Default route
-app.get("/", (req, res) => {
-  res.send("🚀 Waafi backend is running!");
+app.get('/', (req, res) => {
+  res.send('🚀 Waafi backend is running!');
 });
 
-// 💳 Payment + unlock + rental logging
+// ✅ Handle payment + unlock
 app.post("/api/pay/:stationCode", async (req, res) => {
   const { stationCode } = req.params;
   const { phoneNumber, amount } = req.body;
@@ -142,14 +128,15 @@ app.post("/api/pay/:stationCode", async (req, res) => {
 
     const unlockRes = await releaseBattery(imei, battery_id, slot_id);
 
-    // 📝 Log rental to Firestore
-    await axios.post("http://localhost:3000/api/rentals/log", {
-      stationCode,
-      battery_id,
-      slot_id,
-      amount,
-      phoneNumber,
-    });
+    // ✅ log rental in Firestore
+      await axios.post("http://localhost:3000/api/rentals/log", {
+        stationCode,
+        battery_id,
+        slot_id,
+        amount,
+        phoneNumber,
+      });
+
 
     res.json({
       success: true,
@@ -163,23 +150,30 @@ app.post("/api/pay/:stationCode", async (req, res) => {
   }
 });
 
-// 🔌 Routes
+// ⬇️ Add Firestore routes here
+// 1. stations
+const stationRoutes = require("./routes/stationRoutes");
 app.use("/api/stations", stationRoutes);
+
+// 2. rentals
+const rentalRoutes = require("./routes/rentalRoutes");
 app.use("/api/rentals", rentalRoutes);
+
+//  Admin API to show today's or monthly summary
+const statsRoutes = require("./routes/statsRoutes");
 app.use("/api/stats", statsRoutes);
 
-// daily customer count
-app.use("/api/customers", customerRoutes);
 
-
-// ========== 🔁 Station Stats Updater ==========
+// runs every 5 minutes to update station stats
+const updateStationStats = require("./jobs/station_stats");
 setInterval(() => {
-  console.log("⏱️ Running station stats updater...");
   updateStationStats();
-}, 1000 * 60 * 5); // every 5 minutes
+}, 5 * 60 * 1000); // every 5 minutes
 
 
-// 🚀 Start server
+// ✅ Start the server
 app.listen(PORT, () => {
-  console.log(`✅ Server running: http://localhost:${PORT}`);
+  console.log(`🚀 Server is running on http://localhost:${PORT}`);
 });
+
+
