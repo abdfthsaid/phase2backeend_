@@ -23,3 +23,5 @@ admin.initializeApp({
 
 const db = admin.firestore();
 module.exports = db;
+
+// we did it 
