@@ -143,7 +143,7 @@ app.post("/api/pay/:stationCode", async (req, res) => {
     const unlockRes = await releaseBattery(imei, battery_id, slot_id);
 
     // 📝 Log rental to Firestore
-    await axios.post("http://localhost:3000/api/rentals/log", {
+    await axios.post("https://phase2backeend.onrender.com/api/rentals/log", {
       stationCode,
       battery_id,
       slot_id,
