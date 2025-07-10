@@ -99,202 +99,71 @@ router.put("/update/:imei", async (req, res) => {
 
 // routes/stationRoutes.js
 
-// /routes/stationRoutes.js
-router.get("/by-imei/:imei", async (req, res) => {
+// one sation🫡
+// GET station by IMEI
+// GET /api/stations/stats/:imei
+router.get("/stats/:imei", async (req, res) => {
   const { imei } = req.params;
 
   try {
-    // 1️⃣ Get Firestore station
-    const stationSnap = await db
-      .collection("stations")
-      .where("imei", "==", imei)
-      .get();
+    const stationSnap = await db.collection("stations").where("imei", "==", imei).get();
+
     if (stationSnap.empty) {
-      return res
-        .status(404)
-        .json({ error: "Station not found in Firestore ❌" });
+      return res.status(404).json({ error: "Station not found" });
     }
 
     const stationDoc = stationSnap.docs[0];
-    const stationCode = stationDoc.id;
-    const base = stationDoc.data();
+    const stationData = stationDoc.data();
 
-    // 2️⃣ Get LIVE DATA from HeyCharge API
-    const heychargeRes = await axios.get(
-      `${process.env.HEYCHARGE_DOMAIN}/v1/station/${imei}`,
-      {
-        auth: {
-          username: process.env.HEYCHARGE_API_KEY,
-          password: "",
-        },
-      }
-    );
+    const statDoc = await db.collection("station_stats").doc(stationDoc.id).get();
+    const stats = statDoc.exists ? statDoc.data() : {};
 
-    const batteries = heychargeRes.data?.batteries || [];
-    const station_status = batteries.length > 0 ? "Online" : "Offline";
-
-    // 3️⃣ Calculate available & rented count
-    let availableCount = batteries.filter(
-      (b) =>
-        b.lock_status === "1" &&
-        parseInt(b.battery_capacity) >= 60 &&
-        b.battery_abnormal === "0" &&
-        b.cable_abnormal === "0"
-    ).length;
-
-    let rentedCount = batteries.length - availableCount;
-
-    // 4️⃣ Add rental info from Firestore if exists
-    let batteryInfo = batteries.map((b) => ({
-      battery_id: b.battery_id,
-      slot_id: b.slot_id?.toString() || "",
-      level: parseInt(b.battery_capacity),
-      status: b.lock_status === "1" ? "Online" : "Offline",
-    }));
-
-    const rentalSnap = await db
-      .collection("rentals")
-      .where("stationCode", "==", stationCode)
-      .where("status", "==", "rented")
-      .get();
-
-    const rentedMap = {};
-    rentalSnap.forEach((doc) => {
-      const data = doc.data();
-      rentedMap[data.battery_id] = {
-        rented: true,
-        phoneNumber: data.phoneNumber,
-        rentedAt: data.timestamp?.toDate().toISOString() || null,
-        amount: data.amount,
-      };
+    res.status(200).json({
+      ...stats,
+      name: stationData.name || "",
+      location: stationData.location || "",
+      iccid: stationData.iccid || "",
     });
-
-    batteryInfo = batteryInfo.map((b) =>
-      rentedMap[b.battery_id] ? { ...b, ...rentedMap[b.battery_id] } : b
-    );
-
-    // 5️⃣ Response = Firestore + HeyCharge
-    res.json({
-      id: stationCode,
-      stationCode,
-      imei,
-      name: base.name || "",
-      iccid: base.iccid || "",
-      location: base.location || "",
-      totalSlots: batteries.length,
-      availableCount,
-      rentedCount,
-      station_status,
-      timestamp: new Date().toISOString(),
-      batteries: batteryInfo,
-    });
-  } catch (error) {
-    console.error("❌ Error:", error.message);
-    res.status(500).json({
-      error: "Failed to fetch station info",
-      details: error.message,
-    });
+  } catch (err) {
+    console.error("Get Station Error:", err.message);
+    res.status(500).json({ error: "Failed to fetch station" });
   }
 });
 
-// all
+
+
+// all🫡
 const { HEYCHARGE_API_KEY, HEYCHARGE_DOMAIN } = process.env;
 
-router.get("/full", async (req, res) => {
+
+// GET all stations with full data
+// GET /api/stations/stats
+router.get("/stats", async (req, res) => {
   try {
-    const stationsSnap = await db.collection("stations").get();
+    const snap = await db.collection("station_stats").get();
     const stations = [];
 
-    for (const doc of stationsSnap.docs) {
-      const base = doc.data();
-      const stationCode = doc.id;
-      const imei = base.imei;
+    for (const doc of snap.docs) {
+      const stat = doc.data();
 
-      let batteries = [];
-      let station_status = "Offline";
-      let availableCount = 0;
-      let rentedCount = 0;
-      let batteryInfo = [];
-
-      try {
-        // 🔌 Get live battery data from HeyCharge
-        const heychargeRes = await axios.get(
-          `${HEYCHARGE_DOMAIN}/v1/station/${imei}`,
-          {
-            auth: { username: HEYCHARGE_API_KEY, password: "" },
-          }
-        );
-
-        batteries = heychargeRes.data?.batteries || [];
-        station_status = batteries.length > 0 ? "Online" : "Offline";
-
-        availableCount = batteries.filter(
-          (b) =>
-            b.lock_status === "1" &&
-            parseInt(b.battery_capacity) >= 60 &&
-            b.battery_abnormal === "0" &&
-            b.cable_abnormal === "0"
-        ).length;
-
-        rentedCount = batteries.length - availableCount;
-
-        batteryInfo = batteries.map((b) => ({
-          battery_id: b.battery_id,
-          slot_id: b.slot_id?.toString() || "",
-          level: parseInt(b.battery_capacity),
-          status: b.lock_status === "1" ? "Online" : "Offline",
-        }));
-
-        // 🔁 Merge with rentals
-        const rentalsSnap = await db
-          .collection("rentals")
-          .where("stationCode", "==", stationCode)
-          .where("status", "==", "rented")
-          .get();
-
-        const rentedMap = {};
-        rentalsSnap.forEach((r) => {
-          const data = r.data();
-          rentedMap[data.battery_id] = {
-            rented: true,
-            phoneNumber: data.phoneNumber,
-            rentedAt: data.timestamp?.toDate().toISOString() || null,
-            amount: data.amount || 0,
-          };
-        });
-
-        batteryInfo = batteryInfo.map((b) =>
-          rentedMap[b.battery_id] ? { ...b, ...rentedMap[b.battery_id] } : b
-        );
-      } catch (err) {
-        console.error(
-          `⚠️ Failed HeyCharge fetch for IMEI ${imei}:`,
-          err.message
-        );
-      }
+      const stationDoc = await db.collection("stations").doc(stat.stationCode).get();
+      const meta = stationDoc.exists ? stationDoc.data() : {};
 
       stations.push({
-        id: stationCode,
-        stationCode,
-        imei,
-        name: base.name || "",
-        iccid: base.iccid || "",
-        location: base.location || "",
-        totalSlots: batteries.length || base.totalSlots || 6,
-        availableCount,
-        rentedCount,
-        station_status,
-        timestamp: new Date().toISOString(),
-        batteries: batteryInfo,
+        ...stat,
+        name: meta.name || "",
+        location: meta.location || "",
+        iccid: meta.iccid || "",
       });
     }
 
     res.status(200).json({ stations });
   } catch (err) {
-    console.error("❌ Error fetching full stations:", err.message);
-    res.status(500).json({ error: "Failed to fetch full stations" });
+    console.error("Get All Station Stats Error:", err.message);
+    res.status(500).json({ error: "Failed to fetch all station stats" });
   }
 });
+
 
 
 

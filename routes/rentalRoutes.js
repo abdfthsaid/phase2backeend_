@@ -4,6 +4,7 @@ import { Timestamp } from "firebase-admin/firestore";
 
 const router = express.Router();
 
+// ✅✅
 
 // 🔐 POST: Save rental log & update daily + monthly customer stats
 router.post("/log", async (req, res) => {
@@ -73,31 +74,46 @@ router.post("/log", async (req, res) => {
 
 
 
-
+// ✅✅
 // 📅 GET: Daily revenue
 router.get("/revenue/daily/:stationCode", async (req, res) => {
   const { stationCode } = req.params;
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0); // Midnight
 
   try {
     const snapshot = await db.collection("rentals")
       .where("stationCode", "==", stationCode)
       .where("timestamp", ">=", Timestamp.fromDate(today))
+      .where("status", "in", ["rented", "returned"]) // ✅ Optional filter
       .get();
 
     let total = 0;
+    let count = 0;
+
     snapshot.forEach(doc => {
-      total += parseFloat(doc.data().amount || 0);
+      const data = doc.data();
+      const amount = parseFloat(data.amount || 0);
+      if (!isNaN(amount)) {
+        total += amount;
+        count++;
+      }
     });
 
-    res.json({ stationCode, totalRevenueToday: total });
+    res.json({
+      stationCode,
+      totalRevenueToday: total,
+      totalRentalsToday: count,
+      date: today.toISOString().split("T")[0]
+    });
   } catch (error) {
-    console.error("Daily revenue error:", error);
-    res.status(500).json({ error: "Failed to calculate daily revenue" });
+    console.error("❌ Daily revenue error:", error);
+    res.status(500).json({ error: "Failed to calculate daily revenue ❌" });
   }
 });
 
+
+// ✅✅
 // 📆 GET: Monthly revenue
 router.get("/revenue/monthly/:stationCode", async (req, res) => {
   const { stationCode } = req.params;
@@ -108,96 +124,69 @@ router.get("/revenue/monthly/:stationCode", async (req, res) => {
     const snapshot = await db.collection("rentals")
       .where("stationCode", "==", stationCode)
       .where("timestamp", ">=", Timestamp.fromDate(startOfMonth))
+      .where("status", "in", ["rented", "returned"]) // ✅ Optional filter
       .get();
 
     let total = 0;
+    let count = 0;
+
     snapshot.forEach(doc => {
-      total += parseFloat(doc.data().amount || 0);
+      const data = doc.data();
+      const amount = parseFloat(data.amount || 0);
+      if (!isNaN(amount)) {
+        total += amount;
+        count++;
+      }
     });
 
-    res.json({ stationCode, totalRevenueMonthly: total });
+    res.json({
+      stationCode,
+      totalRevenueMonthly: total,
+      totalRentalsThisMonth: count,
+      month: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+    });
   } catch (error) {
-    console.error("Monthly revenue error:", error);
-    res.status(500).json({ error: "Failed to calculate monthly revenue" });
+    console.error("❌ Monthly revenue error:", error);
+    res.status(500).json({ error: "Failed to calculate monthly revenue ❌" });
   }
 });
 
-// 🕒 GET: Latest 10 rentals
-router.get("/recent", async (req, res) => {
+
+
+// ✅✅
+router.get("/today/rented", async (req, res) => {
   try {
+    // 🗓️ Define start and end of today
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+
+    const startTimestamp = Timestamp.fromDate(startOfDay);
+    const endTimestamp = Timestamp.fromDate(endOfDay);
+
+    // 🔍 Query today's 'rented' rentals
     const snapshot = await db.collection("rentals")
+      .where("timestamp", ">=", startTimestamp)
+      .where("timestamp", "<", endTimestamp)
+      .where("status", "==", "rented")
       .orderBy("timestamp", "desc")
       .limit(10)
       .get();
 
-    const recentRentals = snapshot.docs.map(doc => doc.data());
+    const rentals = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
 
-    res.status(200).json({ recentRentals });
+    res.status(200).json({ rentals });
   } catch (error) {
-    console.error("Recent rentals error:", error);
-    res.status(500).json({ error: "Failed to fetch recent rentals" });
+    console.error("❌ Error fetching today rented rentals:", error.message);
+    res.status(500).json({ error: "Failed to fetch today's rented rentals ❌" });
   }
 });
 
-// 📄 GET: Rentals for today
-router.get("/daily/:stationCode", async (req, res) => {
-  const { stationCode } = req.params;
 
-  try {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-
-    const snapshot = await db.collection("rentals")
-      .where("stationCode", "==", stationCode)
-      .where("timestamp", ">=", Timestamp.fromDate(start))
-      .where("timestamp", "<", Timestamp.fromDate(end))
-      .get();
-
-    const rentals = snapshot.docs.map(doc => doc.data());
-
-    res.status(200).json({ total: rentals.length, rentals });
-  } catch (err) {
-    console.error("Daily rentals error:", err);
-    res.status(500).json({ error: "Failed to fetch daily rentals" });
-  }
-});
-
-// 🔁 PUT: Return battery
-router.put("/return", async (req, res) => {
-  const { battery_id, stationCode } = req.body;
-
-  if (!battery_id || !stationCode) {
-    return res.status(400).json({ error: "Missing battery_id or stationCode" });
-  }
-
-  try {
-    const snapshot = await db.collection("rentals")
-      .where("battery_id", "==", battery_id)
-      .where("stationCode", "==", stationCode)
-      .where("status", "==", "rented")
-      .orderBy("timestamp", "desc")
-      .limit(1)
-      .get();
-
-    if (snapshot.empty) {
-      return res.status(404).json({ error: "Rental not found or already returned" });
-    }
-
-    const rentalDoc = snapshot.docs[0].ref;
-
-    await rentalDoc.update({
-      status: "returned",
-      returnedAt: Timestamp.now(),
-    });
-
-    res.status(200).json({ success: true, message: "Battery marked as returned" });
-  } catch (err) {
-    console.error("Return error:", err);
-    res.status(500).json({ error: "Failed to mark as returned" });
-  }
-});
-
+// ✅✅
 // GET: Daily customer count
 router.get("/daily/:stationCode", async (req, res) => {
   const { stationCode } = req.params;
