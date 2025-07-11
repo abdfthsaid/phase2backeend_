@@ -16,12 +16,12 @@ const rentals = [
     stationCode: "WSEP161721195358",
     battery_id: "BAT002",
     slot_id: "1",
-    amount:1,
+    amount: 1,
     phoneNumber: "252611111111",
     status: "rented",
     timestamp: Timestamp.now(),
     rentedAt: Timestamp.now(),
-  }
+  },
 ];
 
 async function seedRentals() {

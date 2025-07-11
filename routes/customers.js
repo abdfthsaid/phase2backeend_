@@ -26,27 +26,31 @@ router.get("/daily/:stationCode", async (req, res) => {
   }
 });
 
-
 router.get("/monthly/:stationCode", async (req, res) => {
   const { stationCode } = req.params;
 
   const now = new Date();
-  const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}`;
   const monthlyDocId = `${stationCode}_${yearMonth}`;
 
   try {
-    const doc = await db.collection("monthly_customer_stats").doc(monthlyDocId).get();
+    const doc = await db
+      .collection("monthly_customer_stats")
+      .doc(monthlyDocId)
+      .get();
 
     res.status(200).json({
       imei: stationCode,
       month: yearMonth,
-      count: doc.exists ? doc.data().count : 0
+      count: doc.exists ? doc.data().count : 0,
     });
   } catch (err) {
     console.error("Monthly customer fetch error:", err);
     res.status(500).json({ error: "Failed to get monthly customer stats" });
   }
 });
-
 
 export default router;

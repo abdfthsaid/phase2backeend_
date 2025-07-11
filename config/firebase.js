@@ -10,7 +10,10 @@ if (!process.env.FIREBASE_CREDENTIALS_B64) {
 
 let decoded;
 try {
-  decoded = Buffer.from(process.env.FIREBASE_CREDENTIALS_B64, "base64").toString("utf8");
+  decoded = Buffer.from(
+    process.env.FIREBASE_CREDENTIALS_B64,
+    "base64"
+  ).toString("utf8");
 } catch (err) {
   console.error("❌ Failed to decode base64:", err.message);
   process.exit(1);

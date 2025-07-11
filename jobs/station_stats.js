@@ -13,7 +13,7 @@ const stations = [
   "WSEP161741066504",
   "WSEP161741066505",
   "WSEP161741066502",
-  "WSEP161741066503"
+  "WSEP161741066503",
 ];
 
 function isToday(timestamp) {
@@ -59,7 +59,8 @@ export async function updateStationStats() {
       }
 
       // Fetch today's rentals for this IMEI
-      const rentalSnapshot = await db.collection("rentals")
+      const rentalSnapshot = await db
+        .collection("rentals")
         .where("stationCode", "==", imei)
         .where("status", "==", "rented")
         .get();
@@ -92,27 +93,32 @@ export async function updateStationStats() {
       );
 
       const totalSlots = slotTemplate.length;
-      const availableCount = slotTemplate.filter(s => s.status === "Online").length;
+      const availableCount = slotTemplate.filter(
+        (s) => s.status === "Online"
+      ).length;
 
       // Get station metadata from Firestore (doc ID is IMEI)
       const stationDoc = await db.collection("stations").doc(imei).get();
       const stationData = stationDoc.exists ? stationDoc.data() : {};
 
       // Save merged data to station_stats collection, doc ID = IMEI
-      await db.collection("station_stats").doc(imei).set({
-        id: imei,
-        stationCode: imei,
-        imei,
-        name: stationData.name || "",
-        location: stationData.location || "",
-        iccid: stationData.iccid || "",
-        station_status,
-        totalSlots,
-        availableCount,
-        rentedCount,
-        timestamp: now,
-        batteries: slotTemplate,
-      });
+      await db
+        .collection("station_stats")
+        .doc(imei)
+        .set({
+          id: imei,
+          stationCode: imei,
+          imei,
+          name: stationData.name || "",
+          location: stationData.location || "",
+          iccid: stationData.iccid || "",
+          station_status,
+          totalSlots,
+          availableCount,
+          rentedCount,
+          timestamp: now,
+          batteries: slotTemplate,
+        });
 
       console.log(`✅ Updated stats for station ${imei}`);
     } catch (err) {

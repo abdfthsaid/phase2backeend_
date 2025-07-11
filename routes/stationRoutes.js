@@ -106,7 +106,10 @@ router.get("/stats/:imei", async (req, res) => {
   const { imei } = req.params;
 
   try {
-    const stationSnap = await db.collection("stations").where("imei", "==", imei).get();
+    const stationSnap = await db
+      .collection("stations")
+      .where("imei", "==", imei)
+      .get();
 
     if (stationSnap.empty) {
       return res.status(404).json({ error: "Station not found" });
@@ -115,7 +118,10 @@ router.get("/stats/:imei", async (req, res) => {
     const stationDoc = stationSnap.docs[0];
     const stationData = stationDoc.data();
 
-    const statDoc = await db.collection("station_stats").doc(stationDoc.id).get();
+    const statDoc = await db
+      .collection("station_stats")
+      .doc(stationDoc.id)
+      .get();
     const stats = statDoc.exists ? statDoc.data() : {};
 
     res.status(200).json({
@@ -130,11 +136,8 @@ router.get("/stats/:imei", async (req, res) => {
   }
 });
 
-
-
 // all🫡
 const { HEYCHARGE_API_KEY, HEYCHARGE_DOMAIN } = process.env;
-
 
 // GET all stations with full data
 // GET /api/stations/stats
@@ -146,7 +149,10 @@ router.get("/stats", async (req, res) => {
     for (const doc of snap.docs) {
       const stat = doc.data();
 
-      const stationDoc = await db.collection("stations").doc(stat.stationCode).get();
+      const stationDoc = await db
+        .collection("stations")
+        .doc(stat.stationCode)
+        .get();
       const meta = stationDoc.exists ? stationDoc.data() : {};
 
       stations.push({
@@ -163,10 +169,6 @@ router.get("/stats", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch all station stats" });
   }
 });
-
-
-
-
 
 router.get("/basic", async (req, res) => {
   try {

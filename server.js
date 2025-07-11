@@ -142,15 +142,20 @@ app.post("/api/pay/:stationCode", async (req, res) => {
 
     const unlockRes = await releaseBattery(imei, battery_id, slot_id);
 
-    // 📝 Log rental to Firestore111
-    await axios.post("https://phase2backeend.onrender.com/api/rentals/log", {
-      stationCode,
-      battery_id,
-      slot_id,
-      amount,
-      phoneNumber,
-    });
+    // 📝 Log rental to Firestore (fixed here)
+    const rentalLogRes = await axios.post(
+      "https://phase2backeend.onrender.com/api/rentals/log",
+      {
+        stationCode,
+        battery_id,
+        slot_id,
+        amount,
+        phoneNumber,
+      }
+    );
+
     console.log("✅ Rental log success:", rentalLogRes.data);
+
     res.json({
       success: true,
       battery_id,
@@ -167,15 +172,13 @@ app.post("/api/pay/:stationCode", async (req, res) => {
 app.use("/api/stations", stationRoutes);
 app.use("/api/rentals", rentalRoutes);
 app.use("/api/stats", statsRoutes);
-
-// daily customer count
 app.use("/api/customers", customerRoutes);
 
-// ========== 🔁 Station Stats Updater ==========
+// 🔁 Station Stats Updater
 setInterval(() => {
   console.log("⏱️ Running station stats updater...");
   updateStationStats();
-}, 1000 * 60 * 1); // every 5 minutes
+}, 1000 * 60 * 1); // every 1 minute
 
 // 🚀 Start server
 app.listen(PORT, () => {
