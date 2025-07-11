@@ -4,125 +4,189 @@ import { Timestamp } from "firebase-admin/firestore";
 
 const router = express.Router();
 
-// ===============================
-// ✅ 1. Daily Revenue (One Station)
-// ===============================
+// ✅ DAILY REVENUE FOR SINGLE STATION
 router.get("/daily/:stationCode", async (req, res) => {
   const { stationCode } = req.params;
   const today = new Date();
-  today.setHours(0, 0, 0, 0); // Start of the day
+  today.setHours(0, 0, 0, 0);
 
   try {
-    const snapshot = await db
+    const rentedSnap = await db
       .collection("rentals")
       .where("stationCode", "==", stationCode)
       .where("timestamp", ">=", Timestamp.fromDate(today))
-      .where("status", "in", ["rented", "returned"])
+      .where("status", "==", "rented")
       .get();
 
+    const returnedSnap = await db
+      .collection("rentals")
+      .where("stationCode", "==", stationCode)
+      .where("timestamp", ">=", Timestamp.fromDate(today))
+      .where("status", "==", "returned")
+      .get();
+
+    const allDocs = [...rentedSnap.docs, ...returnedSnap.docs];
+
     let total = 0;
-    snapshot.forEach((doc) => {
-      total += parseFloat(doc.data().amount || 0);
+    let count = 0;
+
+    allDocs.forEach((doc) => {
+      const data = doc.data();
+      const amount = parseFloat(data.amount || 0);
+      if (!isNaN(amount)) {
+        total += amount;
+        count++;
+      }
     });
 
     res.json({
       stationCode,
-      date: today.toISOString().split("T")[0],
       totalRevenueToday: total,
+      totalRentalsToday: count,
+      date: today.toISOString().split("T")[0],
     });
-  } catch (err) {
-    console.error("❌ Daily revenue error:", err);
-    res.status(500).json({ error: "Failed to calculate daily revenue" });
+  } catch (error) {
+    console.error("❌ Daily revenue error:", error);
+    res.status(500).json({ error: "Failed to calculate daily revenue ❌" });
   }
 });
 
-// ===================================
-// ✅ 2. Monthly Revenue (One Station)
-// ===================================
+// ✅ MONTHLY REVENUE FOR SINGLE STATION
 router.get("/monthly/:stationCode", async (req, res) => {
   const { stationCode } = req.params;
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
   try {
-    const snapshot = await db
+    const rentedSnap = await db
       .collection("rentals")
       .where("stationCode", "==", stationCode)
       .where("timestamp", ">=", Timestamp.fromDate(startOfMonth))
-      .where("status", "in", ["rented", "returned"])
+      .where("status", "==", "rented")
       .get();
 
+    const returnedSnap = await db
+      .collection("rentals")
+      .where("stationCode", "==", stationCode)
+      .where("timestamp", ">=", Timestamp.fromDate(startOfMonth))
+      .where("status", "==", "returned")
+      .get();
+
+    const allDocs = [...rentedSnap.docs, ...returnedSnap.docs];
+
     let total = 0;
-    snapshot.forEach((doc) => {
-      total += parseFloat(doc.data().amount || 0);
+    let count = 0;
+
+    allDocs.forEach((doc) => {
+      const data = doc.data();
+      const amount = parseFloat(data.amount || 0);
+      if (!isNaN(amount)) {
+        total += amount;
+        count++;
+      }
     });
 
     res.json({
       stationCode,
-      month: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
       totalRevenueMonthly: total,
+      totalRentalsThisMonth: count,
+      month: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+        2,
+        "0"
+      )}`,
     });
-  } catch (err) {
-    console.error("❌ Monthly revenue error:", err);
-    res.status(500).json({ error: "Failed to calculate monthly revenue" });
+  } catch (error) {
+    console.error("❌ Monthly revenue error:", error);
+    res.status(500).json({ error: "Failed to calculate monthly revenue ❌" });
   }
 });
 
-// =======================================
-// ✅ 3. Total Daily Revenue (All Stations)
-// =======================================
-router.get("/daily-total", async (req, res) => {
+// ✅ DAILY REVENUE FOR ALL STATIONS
+router.get("/daily", async (req, res) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
   try {
-    const snapshot = await db
+    const rentedSnap = await db
       .collection("rentals")
       .where("timestamp", ">=", Timestamp.fromDate(today))
-      .where("status", "in", ["rented", "returned"])
+      .where("status", "==", "rented")
       .get();
 
+    const returnedSnap = await db
+      .collection("rentals")
+      .where("timestamp", ">=", Timestamp.fromDate(today))
+      .where("status", "==", "returned")
+      .get();
+
+    const allDocs = [...rentedSnap.docs, ...returnedSnap.docs];
+
     let total = 0;
-    snapshot.forEach((doc) => {
-      total += parseFloat(doc.data().amount || 0);
+    let count = 0;
+
+    allDocs.forEach((doc) => {
+      const data = doc.data();
+      const amount = parseFloat(data.amount || 0);
+      if (!isNaN(amount)) {
+        total += amount;
+        count++;
+      }
     });
 
     res.json({
-      date: today.toISOString().split("T")[0],
       totalRevenueToday: total,
+      totalRentalsToday: count,
+      date: today.toISOString().split("T")[0],
     });
-  } catch (err) {
-    console.error("❌ Daily total revenue error:", err);
-    res.status(500).json({ error: "Failed to calculate total daily revenue" });
+  } catch (error) {
+    console.error("❌ All stations daily revenue error:", error);
+    res.status(500).json({ error: "Failed to calculate daily revenue ❌" });
   }
 });
 
-// ==========================================
-// ✅ 4. Total Monthly Revenue (All Stations)
-// ==========================================
-router.get("/monthly-total", async (req, res) => {
+// ✅ MONTHLY REVENUE FOR ALL STATIONS
+router.get("/monthly", async (req, res) => {
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
   try {
-    const snapshot = await db
+    const rentedSnap = await db
       .collection("rentals")
       .where("timestamp", ">=", Timestamp.fromDate(startOfMonth))
-      .where("status", "in", ["rented", "returned"])
+      .where("status", "==", "rented")
       .get();
 
+    const returnedSnap = await db
+      .collection("rentals")
+      .where("timestamp", ">=", Timestamp.fromDate(startOfMonth))
+      .where("status", "==", "returned")
+      .get();
+
+    const allDocs = [...rentedSnap.docs, ...returnedSnap.docs];
+
     let total = 0;
-    snapshot.forEach((doc) => {
-      total += parseFloat(doc.data().amount || 0);
+    let count = 0;
+
+    allDocs.forEach((doc) => {
+      const data = doc.data();
+      const amount = parseFloat(data.amount || 0);
+      if (!isNaN(amount)) {
+        total += amount;
+        count++;
+      }
     });
 
     res.json({
-      month: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
-      totalRevenueThisMonth: total,
+      totalRevenueMonthly: total,
+      totalRentalsThisMonth: count,
+      month: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+        2,
+        "0"
+      )}`,
     });
-  } catch (err) {
-    console.error("❌ Monthly total revenue error:", err);
-    res.status(500).json({ error: "Failed to calculate total monthly revenue" });
+  } catch (error) {
+    console.error("❌ All stations monthly revenue error:", error);
+    res.status(500).json({ error: "Failed to calculate monthly revenue ❌" });
   }
 });
 
