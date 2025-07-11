@@ -146,7 +146,7 @@ app.post("/api/pay/:stationCode", async (req, res) => {
     const rentalLogRes = await axios.post(
       "https://danabbackend.onrender.com/api/rentals/log",
       {
-        stationCode,
+        imei,
         battery_id,
         slot_id,
         amount,
