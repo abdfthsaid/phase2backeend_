@@ -37,7 +37,7 @@ app.use(bodyParser.json());
 
 // 📍 Station code -> IMEI map
 const stationImeisByCode = {
-  "58": STATION_CASTELLO_TALEEX,
+  58: STATION_CASTELLO_TALEEX,
   "02": STATION_CASTELLO_BOONDHERE,
   "03": STATION_JAVA_TALEEX,
   "04": STATION_JAVA_AIRPORT,
@@ -143,14 +143,14 @@ app.post("/api/pay/:stationCode", async (req, res) => {
     const unlockRes = await releaseBattery(imei, battery_id, slot_id);
 
     // 📝 Log rental to Firestore
-    await axios.post("https://phase2backeend.onrender.com/api/rentals/log", {
+    await axios.post("http://localhost:3000/api/rentals/log", {
       stationCode,
       battery_id,
       slot_id,
       amount,
       phoneNumber,
     });
-
+    console.log("✅ Rental log success:", rentalLogRes.data);
     res.json({
       success: true,
       battery_id,
@@ -171,13 +171,11 @@ app.use("/api/stats", statsRoutes);
 // daily customer count
 app.use("/api/customers", customerRoutes);
 
-
 // ========== 🔁 Station Stats Updater ==========
 setInterval(() => {
   console.log("⏱️ Running station stats updater...");
   updateStationStats();
-}, 1000 * 60 * 5); // every 5 minutes
-
+}, 1000 * 60 * 1); // every 5 minutes
 
 // 🚀 Start server
 app.listen(PORT, () => {
