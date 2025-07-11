@@ -5,40 +5,44 @@ import { Timestamp } from "firebase-admin/firestore";
 const router = express.Router();
 
 // ✅ DAILY REVENUE FOR SINGLE STATION (rented only)
+// 🧮 Daily revenue (only "rented" status):
 router.get("/daily/:stationCode", async (req, res) => {
   const { stationCode } = req.params;
   const today = new Date();
-  today.setHours(0, 0, 0, 0); // start of day
+  today.setHours(0, 0, 0, 0);
+
+  console.log(`[Revenue] Fetching daily revenue for ${stationCode} from`, today);
 
   try {
-    const snapshot = await db
+    const snap = await db
       .collection("rentals")
       .where("stationCode", "==", stationCode)
       .where("timestamp", ">=", Timestamp.fromDate(today))
-      .where("status", "==", "rented") // ✅ only rented for now
+      .where("status", "==", "rented")
       .get();
+
+    console.log(`[Revenue] Found ${snap.size} rentals`);
 
     let total = 0;
     let count = 0;
 
-    snapshot.forEach((doc) => {
-      const data = doc.data();
-      const amount = parseFloat(data.amount || 0);
-      if (!isNaN(amount)) {
-        total += amount;
-        count++;
-      }
+    snap.forEach((doc) => {
+      const { amount } = doc.data();
+      total += parseFloat(amount || 0);
+      count++;
     });
 
-    res.json({
+    console.log(`[Revenue] total=${total}, count=${count}`);
+
+    return res.json({
       stationCode,
       totalRevenueToday: total,
       totalRentalsToday: count,
       date: today.toISOString().split("T")[0],
     });
-  } catch (error) {
-    console.error("❌ Daily revenue error:", error);
-    res.status(500).json({ error: "Failed to calculate daily revenue ❌" });
+  } catch (err) {
+    console.error("❌ Error calculating daily revenue:", err);
+    return res.status(500).json({ error: "Failed to calculate daily revenue ❌" });
   }
 });
 
