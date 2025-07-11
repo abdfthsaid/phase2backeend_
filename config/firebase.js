@@ -1,4 +1,7 @@
-const admin = require("firebase-admin");
+import dotenv from "dotenv";
+import admin from "firebase-admin";
+
+dotenv.config();
 
 if (!process.env.FIREBASE_CREDENTIALS_B64) {
   console.error("❌ Missing FIREBASE_CREDENTIALS_B64");
@@ -26,4 +29,4 @@ admin.initializeApp({
 });
 
 const db = admin.firestore();
-module.exports = db;
+export default db;
