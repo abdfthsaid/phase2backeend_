@@ -4,33 +4,24 @@ import { Timestamp } from "firebase-admin/firestore";
 
 const router = express.Router();
 
-// ✅ DAILY REVENUE FOR SINGLE STATION
+// ✅ DAILY REVENUE FOR SINGLE STATION (rented only)
 router.get("/daily/:stationCode", async (req, res) => {
   const { stationCode } = req.params;
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0); // start of day
 
   try {
-    const rentedSnap = await db
+    const snapshot = await db
       .collection("rentals")
       .where("stationCode", "==", stationCode)
       .where("timestamp", ">=", Timestamp.fromDate(today))
-      .where("status", "==", "rented")
+      .where("status", "==", "rented") // ✅ only rented for now
       .get();
-
-    const returnedSnap = await db
-      .collection("rentals")
-      .where("stationCode", "==", stationCode)
-      .where("timestamp", ">=", Timestamp.fromDate(today))
-      .where("status", "==", "returned")
-      .get();
-
-    const allDocs = [...rentedSnap.docs, ...returnedSnap.docs];
 
     let total = 0;
     let count = 0;
 
-    allDocs.forEach((doc) => {
+    snapshot.forEach((doc) => {
       const data = doc.data();
       const amount = parseFloat(data.amount || 0);
       if (!isNaN(amount)) {
