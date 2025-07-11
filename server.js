@@ -37,7 +37,7 @@ app.use(bodyParser.json());
 
 // 📍 Station code -> IMEI map
 const stationImeisByCode = {
-  58: STATION_CASTELLO_TALEEX,
+  "58": STATION_CASTELLO_TALEEX,
   "02": STATION_CASTELLO_BOONDHERE,
   "03": STATION_JAVA_TALEEX,
   "04": STATION_JAVA_AIRPORT,
