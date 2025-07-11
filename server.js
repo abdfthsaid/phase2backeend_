@@ -144,7 +144,7 @@ app.post("/api/pay/:stationCode", async (req, res) => {
 
     // 📝 Log rental to Firestore (fixed here)
     const rentalLogRes = await axios.post(
-      "https://phase2backeend.onrender.com/api/rentals/log",
+      "https://danabbackend.onrender.com/api/rentals/log",
       {
         stationCode,
         battery_id,
