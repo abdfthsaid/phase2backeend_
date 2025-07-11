@@ -6,27 +6,23 @@ const router = express.Router();
 
 // ✅✅
 // 🔐 POST: Save rental log & update daily + monthly customer stats
+
 router.post("/log", async (req, res) => {
   console.log("📥 /log route hit:", req.body);
-  const { stationCode, battery_id, slot_id, amount, phoneNumber } = req.body;
+
+  const { imei, battery_id, slot_id, amount, phoneNumber } = req.body;
 
   try {
-    // 🔍 Search by stationCode field instead of using it as doc ID
-    const stationSnap = await db.collection("stations")
-      .where("stationCode", "==", stationCode)
-      .limit(1)
-      .get();
+    // 🔍 Look up station using IMEI as the document ID
+    const stationDoc = await db.collection("stations").doc(imei).get();
 
-    if (stationSnap.empty) {
+    if (!stationDoc.exists) {
       return res.status(404).json({ error: "Station not found ❌" });
     }
 
-    const stationDoc = stationSnap.docs[0];
-    const imei = stationDoc.data().imei;
-
-    // ✅ Save rental
+    // ✅ Save rental with IMEI
     await db.collection("rentals").add({
-      stationCode,
+      stationCode: imei, // ✅ still store as stationCode field
       imei,
       battery_id,
       slot_id,
@@ -40,7 +36,7 @@ router.post("/log", async (req, res) => {
 
     // 📆 DAILY CUSTOMER COUNTER
     const todayKey = now.toISOString().split("T")[0];
-    const dailyId = `${stationCode}_${todayKey}`;
+    const dailyId = `${imei}_${todayKey}`;
     const dailyRef = db.collection("daily_customer_stats").doc(dailyId);
 
     await db.runTransaction(async (t) => {
@@ -49,7 +45,7 @@ router.post("/log", async (req, res) => {
         t.update(dailyRef, { count: (dailyDoc.data().count || 0) + 1 });
       } else {
         t.set(dailyRef, {
-          stationCode,
+          stationCode: imei,
           date: todayKey,
           count: 1,
         });
@@ -57,8 +53,10 @@ router.post("/log", async (req, res) => {
     });
 
     // 📅 MONTHLY CUSTOMER COUNTER
-    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const monthlyId = `${stationCode}_${monthKey}`;
+    const monthKey = `${now.getFullYear()}-${String(
+      now.getMonth() + 1
+    ).padStart(2, "0")}`;
+    const monthlyId = `${imei}_${monthKey}`;
     const monthlyRef = db.collection("monthly_customer_stats").doc(monthlyId);
 
     await db.runTransaction(async (t) => {
@@ -67,7 +65,7 @@ router.post("/log", async (req, res) => {
         t.update(monthlyRef, { count: (monthlyDoc.data().count || 0) + 1 });
       } else {
         t.set(monthlyRef, {
-          stationCode,
+          stationCode: imei,
           month: monthKey,
           count: 1,
         });
@@ -151,7 +149,10 @@ router.get("/revenue/monthly/:stationCode", async (req, res) => {
       stationCode,
       totalRevenueMonthly: total,
       totalRentalsThisMonth: count,
-      month: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
+      month: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+        2,
+        "0"
+      )}`,
     });
   } catch (error) {
     console.error("❌ Monthly revenue error:", error);
@@ -164,8 +165,16 @@ router.get("/revenue/monthly/:stationCode", async (req, res) => {
 router.get("/today/rented", async (req, res) => {
   try {
     const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const startOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    );
+    const endOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() + 1
+    );
 
     const startTimestamp = Timestamp.fromDate(startOfDay);
     const endTimestamp = Timestamp.fromDate(endOfDay);
@@ -187,7 +196,9 @@ router.get("/today/rented", async (req, res) => {
     res.status(200).json({ rentals });
   } catch (error) {
     console.error("❌ Error fetching today rented rentals:", error.message);
-    res.status(500).json({ error: "Failed to fetch today's rented rentals ❌" });
+    res
+      .status(500)
+      .json({ error: "Failed to fetch today's rented rentals ❌" });
   }
 });
 
