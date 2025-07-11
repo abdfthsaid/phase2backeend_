@@ -4,47 +4,49 @@ import { Timestamp } from "firebase-admin/firestore";
 
 const router = express.Router();
 
-// ✅ DAILY REVENUE FOR SINGLE STATION (rented only)
 // 🧮 Daily revenue (only "rented" status):
+// ✅ DAILY REVENUE FOR SINGLE STATION (rented OR returned)
 router.get("/daily/:stationCode", async (req, res) => {
   const { stationCode } = req.params;
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  console.log(`[Revenue] Fetching daily revenue for ${stationCode} from`, today);
+  today.setHours(0, 0, 0, 0); // Start of today
 
   try {
-    const snap = await db
+    console.log(
+      `[Revenue] Fetching daily revenue for ${stationCode} from ${today.toISOString()}`
+    );
+
+    const snapshot = await db
       .collection("rentals")
       .where("stationCode", "==", stationCode)
       .where("timestamp", ">=", Timestamp.fromDate(today))
-      .where("status", "==", "rented")
+      .where("status", "in", ["rented", "returned"]) // ✅ IN operator (OR)
       .get();
-
-    console.log(`[Revenue] Found ${snap.size} rentals`);
 
     let total = 0;
     let count = 0;
 
-    snap.forEach((doc) => {
-      const { amount } = doc.data();
-      total += parseFloat(amount || 0);
-      count++;
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      const amount = parseFloat(data.amount || 0);
+      if (!isNaN(amount)) {
+        total += amount;
+        count++;
+      }
     });
 
-    console.log(`[Revenue] total=${total}, count=${count}`);
-
-    return res.json({
+    res.json({
       stationCode,
       totalRevenueToday: total,
       totalRentalsToday: count,
       date: today.toISOString().split("T")[0],
     });
-  } catch (err) {
-    console.error("❌ Error calculating daily revenue:", err);
-    return res.status(500).json({ error: "Failed to calculate daily revenue ❌" });
+  } catch (error) {
+    console.error("❌ Error calculating daily revenue:", error);
+    res.status(500).json({ error: "Failed to calculate daily revenue ❌" });
   }
 });
+
 
 // ✅ MONTHLY REVENUE FOR SINGLE STATION
 router.get("/monthly/:stationCode", async (req, res) => {
