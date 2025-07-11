@@ -79,6 +79,8 @@ router.post("/log", async (req, res) => {
   }
 });
 
+// /revenue 
+
 // ✅✅
 // 📅 GET: Daily revenue
 router.get("/revenue/daily/:stationCode", async (req, res) => {
@@ -202,7 +204,7 @@ router.get("/today/rented", async (req, res) => {
   }
 });
 
-// ✅✅
+// ✅✅   but already in customer.js
 // GET: Daily customer count
 router.get("/daily/:stationCode", async (req, res) => {
   const { stationCode } = req.params;

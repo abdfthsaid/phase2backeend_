@@ -53,4 +53,62 @@ router.get("/monthly/:stationCode", async (req, res) => {
   }
 });
 
+// 📊 GET: Total Daily Customers (All Stations)
+router.get("/daily-total", async (req, res) => {
+  const today = new Date().toISOString().split("T")[0]; // e.g. "2025-07-11"
+
+  try {
+    const snapshot = await db
+      .collection("daily_customer_stats")
+      .where("date", "==", today)
+      .get();
+
+    let total = 0;
+
+    snapshot.forEach((doc) => {
+      total += doc.data().count || 0;
+    });
+
+    res.json({
+      date: today,
+      totalCustomersToday: total,
+      stations: snapshot.size,
+    });
+  } catch (error) {
+    console.error("❌ Failed to fetch daily totals:", error);
+    res.status(500).json({ error: "Failed to fetch daily totals ❌" });
+  }
+});
+
+// 📊 GET: Total Monthly Customers (All Stations)
+router.get("/monthly-total", async (req, res) => {
+  const now = new Date();
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}`;
+
+  try {
+    const snapshot = await db
+      .collection("monthly_customer_stats")
+      .where("month", "==", monthKey)
+      .get();
+
+    let total = 0;
+
+    snapshot.forEach((doc) => {
+      total += doc.data().count || 0;
+    });
+
+    res.json({
+      month: monthKey,
+      totalCustomersThisMonth: total,
+      stations: snapshot.size,
+    });
+  } catch (error) {
+    console.error("❌ Failed to fetch monthly totals:", error);
+    res.status(500).json({ error: "Failed to fetch monthly totals ❌" });
+  }
+});
+
 export default router;
