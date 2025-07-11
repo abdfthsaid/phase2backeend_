@@ -79,7 +79,7 @@ router.post("/log", async (req, res) => {
   }
 });
 
-// /revenue 
+// /revenue
 
 // ✅✅
 // 📅 GET: Daily revenue
@@ -159,48 +159,6 @@ router.get("/revenue/monthly/:stationCode", async (req, res) => {
   } catch (error) {
     console.error("❌ Monthly revenue error:", error);
     res.status(500).json({ error: "Failed to calculate monthly revenue ❌" });
-  }
-});
-
-// ✅✅
-// GET: Today’s rented
-router.get("/today/rented", async (req, res) => {
-  try {
-    const now = new Date();
-    const startOfDay = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate()
-    );
-    const endOfDay = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate() + 1
-    );
-
-    const startTimestamp = Timestamp.fromDate(startOfDay);
-    const endTimestamp = Timestamp.fromDate(endOfDay);
-
-    const snapshot = await db
-      .collection("rentals")
-      .where("timestamp", ">=", startTimestamp)
-      .where("timestamp", "<", endTimestamp)
-      .where("status", "==", "rented")
-      .orderBy("timestamp", "desc")
-      .limit(10)
-      .get();
-
-    const rentals = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-
-    res.status(200).json({ rentals });
-  } catch (error) {
-    console.error("❌ Error fetching today rented rentals:", error.message);
-    res
-      .status(500)
-      .json({ error: "Failed to fetch today's rented rentals ❌" });
   }
 });
 

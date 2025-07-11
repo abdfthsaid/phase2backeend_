@@ -13,6 +13,9 @@ import rentalRoutes from "./routes/rentalRoutes.js";
 import statsRoutes from "./routes/statsRoutes.js";
 import updateStationStats from "./jobs/station_stats.js";
 import customerRoutes from "./routes/customers.js";
+import revenueRoutes from "./routes/revenue.js";
+
+
 
 // Load .env values
 const {
@@ -173,6 +176,8 @@ app.use("/api/stations", stationRoutes);
 app.use("/api/rentals", rentalRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/customers", customerRoutes);
+app.use("/api/revenue", revenueRoutes);
+
 
 // 🔁 Station Stats Updater
 setInterval(() => {
