@@ -3,32 +3,46 @@ import db from "../config/firebase.js";
 
 const router = express.Router();
 
-// Add a new user with unique username and role validation
+// Add a new user with unique username and email and role validation
 router.post("/add", async (req, res) => {
-  const { username, password, role } = req.body;
+  const { username, password, role, email } = req.body;
 
-  if (!username || !password || !role) {
-    return res.status(400).json({ error: "username, password, and role are required ❌" });
+  if (!username || !password || !role || !email) {
+    return res
+      .status(400)
+      .json({ error: "username, password, role, and email are required ❌" });
   }
 
   if (!["admin", "user"].includes(role)) {
-    return res.status(400).json({ error: "Role must be 'admin' or 'user' only ❌" });
+    return res
+      .status(400)
+      .json({ error: "Role must be 'admin' or 'user' only ❌" });
   }
 
   try {
-    const existingUserSnap = await db
+    // Check unique username
+    const usernameSnap = await db
       .collection("system_users")
       .where("username", "==", username)
       .get();
-
-    if (!existingUserSnap.empty) {
+    if (!usernameSnap.empty) {
       return res.status(409).json({ error: "Username already exists ❌" });
+    }
+
+    // Check unique email
+    const emailSnap = await db
+      .collection("system_users")
+      .where("email", "==", email)
+      .get();
+    if (!emailSnap.empty) {
+      return res.status(409).json({ error: "Email already exists ❌" });
     }
 
     const newUserRef = await db.collection("system_users").add({
       username,
       password,
       role,
+      email,
       createdAt: new Date(),
     });
 
@@ -45,27 +59,61 @@ router.put("/update", async (req, res) => {
   const updates = req.body;
 
   if (!id && !username) {
-    return res.status(400).json({ error: "Provide 'id' or 'username' to update user ❌" });
+    return res
+      .status(400)
+      .json({ error: "Provide 'id' or 'username' to update user ❌" });
   }
 
   if (updates.role && !["admin", "user"].includes(updates.role)) {
-    return res.status(400).json({ error: "Role must be 'admin' or 'user' only ❌" });
+    return res
+      .status(400)
+      .json({ error: "Role must be 'admin' or 'user' only ❌" });
   }
 
   try {
     let userDocRef;
+    let currentData;
+
     if (id) {
       userDocRef = db.collection("system_users").doc(id);
       const doc = await userDocRef.get();
       if (!doc.exists) {
         return res.status(404).json({ error: "User not found ❌" });
       }
+      currentData = doc.data();
     } else {
-      const snap = await db.collection("system_users").where("username", "==", username).limit(1).get();
+      const snap = await db
+        .collection("system_users")
+        .where("username", "==", username)
+        .limit(1)
+        .get();
       if (snap.empty) {
         return res.status(404).json({ error: "User not found ❌" });
       }
       userDocRef = snap.docs[0].ref;
+      currentData = snap.docs[0].data();
+    }
+
+    // If updating username, check uniqueness
+    if (updates.username && updates.username !== currentData.username) {
+      const usernameSnap = await db
+        .collection("system_users")
+        .where("username", "==", updates.username)
+        .get();
+      if (!usernameSnap.empty) {
+        return res.status(409).json({ error: "Username already exists ❌" });
+      }
+    }
+
+    // If updating email, check uniqueness
+    if (updates.email && updates.email !== currentData.email) {
+      const emailSnap = await db
+        .collection("system_users")
+        .where("email", "==", updates.email)
+        .get();
+      if (!emailSnap.empty) {
+        return res.status(409).json({ error: "Email already exists ❌" });
+      }
     }
 
     await userDocRef.update({
@@ -85,7 +133,9 @@ router.delete("/delete", async (req, res) => {
   const { id, username } = req.query;
 
   if (!id && !username) {
-    return res.status(400).json({ error: "Provide 'id' or 'username' to delete user ❌" });
+    return res
+      .status(400)
+      .json({ error: "Provide 'id' or 'username' to delete user ❌" });
   }
 
   try {
@@ -97,7 +147,11 @@ router.delete("/delete", async (req, res) => {
       }
       await docRef.delete();
     } else {
-      const snap = await db.collection("system_users").where("username", "==", username).limit(1).get();
+      const snap = await db
+        .collection("system_users")
+        .where("username", "==", username)
+        .limit(1)
+        .get();
       if (snap.empty) {
         return res.status(404).json({ error: "User not found ❌" });
       }
@@ -131,7 +185,9 @@ router.get("/one", async (req, res) => {
   const { id, username } = req.query;
 
   if (!id && !username) {
-    return res.status(400).json({ error: "Provide 'id' or 'username' to fetch user ❌" });
+    return res
+      .status(400)
+      .json({ error: "Provide 'id' or 'username' to fetch user ❌" });
   }
 
   try {
@@ -144,7 +200,11 @@ router.get("/one", async (req, res) => {
       }
       return res.json({ id: doc.id, ...doc.data() });
     } else {
-      const snap = await db.collection("system_users").where("username", "==", username).limit(1).get();
+      const snap = await db
+        .collection("system_users")
+        .where("username", "==", username)
+        .limit(1)
+        .get();
 
       if (snap.empty) {
         return res.status(404).json({ error: "User not found ❌" });
