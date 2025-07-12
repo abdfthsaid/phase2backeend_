@@ -14,6 +14,9 @@ import statsRoutes from "./routes/statsRoutes.js";
 import updateStationStats from "./jobs/station_stats.js";
 import customerRoutes from "./routes/customers.js";
 import revenueRoutes from "./routes/revenue.js";
+import userRoutes from "./routes/userRoutes.js";
+
+
 
 import db from "./config/firebase.js"; // Needed to check Firestore for online status
 
@@ -191,6 +194,7 @@ app.use("/api/rentals", rentalRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/revenue", revenueRoutes);
+app.use("/api/users", userRoutes);
 
 // 🔁 Station Stats Updater
 setInterval(() => {
