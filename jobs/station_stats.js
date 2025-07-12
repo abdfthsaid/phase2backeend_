@@ -41,9 +41,8 @@ export async function updateStationStats() {
         continue; // skip offline station — don't save stats
       }
 
+      // Build a map of slot_id -> battery info from HeyCharge
       const slotMap = new Map();
-
-      // Add batteries from HeyCharge
       for (const battery of rawBatteries) {
         const sid = battery.slot_id;
         slotMap.set(sid, {
@@ -58,7 +57,7 @@ export async function updateStationStats() {
         });
       }
 
-      // Fetch today's rentals for this IMEI
+      // Fetch all rentals with status "rented" for this station (IMEI)
       const rentalSnapshot = await db
         .collection("rentals")
         .where("stationCode", "==", imei)
@@ -67,18 +66,35 @@ export async function updateStationStats() {
 
       let rentedCount = 0;
 
+      // Create a Set of battery_ids physically present (from HeyCharge)
+      const presentBatteryIds = new Set(rawBatteries.map((b) => b.battery_id));
+
       for (const doc of rentalSnapshot.docs) {
         const rental = doc.data();
-        if (!isToday(rental.timestamp)) continue;
+
+        // Check if the battery rented is now physically present => returned
+        if (presentBatteryIds.has(rental.battery_id)) {
+          // Update rental status to returned
+          await doc.ref.update({
+            status: "returned",
+            returnedAt: now,
+          });
+          console.log(
+            `Rental for battery ${rental.battery_id} marked returned.`
+          );
+          continue; // skip counting this rental as currently rented
+        }
+
+        // Only count rentals for today
+        if (!rental.timestamp || !isToday(rental.timestamp)) continue;
 
         rentedCount++;
-        const sid = rental.slot_id;
 
-        // Override slot info with rental data
-        slotMap.set(sid, {
-          slot_id: sid,
+        // Override slot info with rental data (battery currently rented out)
+        slotMap.set(rental.slot_id, {
+          slot_id: rental.slot_id,
           battery_id: rental.battery_id,
-          level: null,
+          level: null, // unknown while rented
           status: "Rented",
           rented: true,
           phoneNumber: rental.phoneNumber,
@@ -87,7 +103,7 @@ export async function updateStationStats() {
         });
       }
 
-      // Convert map to sorted array
+      // Convert map to sorted array by slot_id
       const slotTemplate = Array.from(slotMap.values()).sort(
         (a, b) => parseInt(a.slot_id) - parseInt(b.slot_id)
       );
@@ -97,7 +113,7 @@ export async function updateStationStats() {
         (s) => s.status === "Online"
       ).length;
 
-      // Get station metadata from Firestore (doc ID is IMEI)
+      // Get station metadata from Firestore (doc ID = IMEI)
       const stationDoc = await db.collection("stations").doc(imei).get();
       const stationData = stationDoc.exists ? stationDoc.data() : {};
 
@@ -126,5 +142,6 @@ export async function updateStationStats() {
     }
   }
 }
-// its 100%from God  --God
+
+// 100% from God — God
 export default updateStationStats;
