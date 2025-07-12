@@ -15,8 +15,7 @@ import updateStationStats from "./jobs/station_stats.js";
 import customerRoutes from "./routes/customers.js";
 import revenueRoutes from "./routes/revenue.js";
 import userRoutes from "./routes/userRoutes.js";
-
-
+import transactionRoutes from "./routes/transactionRoutes.js";
 
 import db from "./config/firebase.js"; // Needed to check Firestore for online status
 
@@ -111,9 +110,7 @@ app.post("/api/pay/:stationCode", async (req, res) => {
 
     const isOnline = statsDoc.data().station_status === "Online";
     if (!isOnline) {
-      return res
-        .status(403)
-        .json({ error: "Station is currently offline ⛔" });
+      return res.status(403).json({ error: "Station is currently offline ⛔" });
     }
 
     const battery = await getAvailableBattery(imei);
@@ -195,6 +192,7 @@ app.use("/api/stats", statsRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/revenue", revenueRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/transactions", transactionRoutes);
 
 // 🔁 Station Stats Updater
 setInterval(() => {
