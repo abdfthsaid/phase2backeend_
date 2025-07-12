@@ -219,4 +219,48 @@ router.get("/one", async (req, res) => {
   }
 });
 
+
+/ Login route
+router.post("/login", async (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ error: "Username and password required ❌" });
+  }
+
+  try {
+    const userSnap = await db
+      .collection("system_users")
+      .where("username", "==", username)
+      .limit(1)
+      .get();
+
+    if (userSnap.empty) {
+      return res.status(401).json({ error: "Invalid username or password ❌" });
+    }
+
+    const userDoc = userSnap.docs[0];
+    const userData = userDoc.data();
+
+    if (userData.password !== password) {
+      return res.status(401).json({ error: "Invalid username or password ❌" });
+    }
+
+    // Successful login — you can also add token generation here later
+    res.json({
+      message: "Login successful ✅",
+      user: {
+        id: userDoc.id,
+        username: userData.username,
+        role: userData.role,
+        email: userData.email || null,
+      },
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+    res.status(500).json({ error: "Login failed ❌" });
+  }
+});
+
+
 export default router;
