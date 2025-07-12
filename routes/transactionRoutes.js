@@ -3,14 +3,22 @@ import db from "../config/firebase.js";
 
 const router = express.Router();
 
-// 🧾 Get last 10 transactions
+// 🧾 Get last 10 transactions (with optional status filter)
 router.get("/latest", async (req, res) => {
+  const { status } = req.query;
+
   try {
-    const snapshot = await db
-      .collection("rentals")
-      .orderBy("timestamp", "desc")
-      .limit(10)
-      .get();
+    let query = db.collection("rentals").orderBy("timestamp", "desc").limit(10);
+
+    if (status) {
+      query = db
+        .collection("rentals")
+        .where("status", "==", status)
+        .orderBy("timestamp", "desc")
+        .limit(10);
+    }
+
+    const snapshot = await query.get();
 
     const transactions = snapshot.docs.map((doc) => ({
       id: doc.id,
@@ -19,8 +27,8 @@ router.get("/latest", async (req, res) => {
 
     res.json(transactions);
   } catch (error) {
-    console.error("❌ Error fetching latest transactions:", error);
-    res.status(500).json({ error: "Failed to fetch latest transactions ❌" });
+    console.error("❌ Error fetching filtered transactions:", error);
+    res.status(500).json({ error: "Failed to fetch transactions ❌" });
   }
 });
 
