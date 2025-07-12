@@ -219,8 +219,7 @@ router.get("/one", async (req, res) => {
   }
 });
 
-
-/ Login route
+// / Login route
 router.post("/login", async (req, res) => {
   const { username, password } = req.body;
 
@@ -262,5 +261,5 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// except
+// solved
 export default router;
