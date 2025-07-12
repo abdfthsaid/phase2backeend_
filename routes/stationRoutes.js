@@ -95,6 +95,27 @@ router.put("/update/:imei", async (req, res) => {
   }
 });
 
+// 🗑️ Delete station by IMEI
+router.delete("/delete/:imei", async (req, res) => {
+  const { imei } = req.params;
+
+  try {
+    const stationRef = db.collection("stations").doc(imei);
+    const doc = await stationRef.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ error: "Station not found ❌" });
+    }
+
+    await stationRef.delete();
+
+    res.status(200).json({ message: "Station deleted successfully 🗑️✅" });
+  } catch (error) {
+    console.error("Delete Error:", error);
+    res.status(500).json({ error: "Failed to delete station ❌" });
+  }
+});
+
 // // 🔌 HeyCharge API integration
 
 // routes/stationRoutes.js

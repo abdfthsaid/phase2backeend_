@@ -15,7 +15,7 @@ import updateStationStats from "./jobs/station_stats.js";
 import customerRoutes from "./routes/customers.js";
 import revenueRoutes from "./routes/revenue.js";
 
-
+import db from "./config/firebase.js"; // Needed to check Firestore for online status
 
 // Load .env values
 const {
@@ -99,6 +99,20 @@ app.post("/api/pay/:stationCode", async (req, res) => {
   }
 
   try {
+    // 🔍 Check if station is online in station_stats
+    const statsDoc = await db.collection("station_stats").doc(imei).get();
+
+    if (!statsDoc.exists) {
+      return res.status(404).json({ error: "Station stats not found" });
+    }
+
+    const isOnline = statsDoc.data().station_status === "Online";
+    if (!isOnline) {
+      return res
+        .status(403)
+        .json({ error: "Station is currently offline ⛔" });
+    }
+
     const battery = await getAvailableBattery(imei);
     if (!battery) {
       return res.status(400).json({ error: "No available battery ≥ 60%" });
@@ -145,7 +159,7 @@ app.post("/api/pay/:stationCode", async (req, res) => {
 
     const unlockRes = await releaseBattery(imei, battery_id, slot_id);
 
-    // 📝 Log rental to Firestore (fixed here)
+    // 📝 Log rental to Firestore
     const rentalLogRes = await axios.post(
       "https://danabbackend.onrender.com/api/rentals/log",
       {
@@ -177,7 +191,6 @@ app.use("/api/rentals", rentalRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/revenue", revenueRoutes);
-
 
 // 🔁 Station Stats Updater
 setInterval(() => {
