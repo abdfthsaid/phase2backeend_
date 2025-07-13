@@ -7,7 +7,7 @@ import cors from "cors";
 import bodyParser from "body-parser";
 import { v4 as uuidv4 } from "uuid";
 
-// Routes
+// 🔗 Route imports
 import stationRoutes from "./routes/stationRoutes.js";
 import rentalRoutes from "./routes/rentalRoutes.js";
 import statsRoutes from "./routes/statsRoutes.js";
@@ -17,9 +17,9 @@ import revenueRoutes from "./routes/revenue.js";
 import userRoutes from "./routes/userRoutes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
 
-import db from "./config/firebase.js"; // Needed to check Firestore for online status
+import db from "./config/firebase.js";
 
-// Load .env values
+// 🌍 ENV
 const {
   PORT = 3000,
   HEYCHARGE_API_KEY,
@@ -35,12 +35,12 @@ const {
   STATION_DILEK_SOMALIA,
 } = process.env;
 
-// Express app setup
+// 🛠️ App setup
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// 📍 Station code -> IMEI map
+// 🏷️ Station code to IMEI map
 const stationImeisByCode = {
   58: STATION_CASTELLO_TALEEX,
   "02": STATION_CASTELLO_BOONDHERE,
@@ -81,7 +81,7 @@ async function releaseBattery(imei, battery_id, slot_id) {
   return res.data;
 }
 
-// 🌐 Default route
+// 🌐 Home route
 app.get("/", (req, res) => {
   res.send("🚀 Waafi backend is running!");
 });
@@ -101,11 +101,9 @@ app.post("/api/pay/:stationCode", async (req, res) => {
   }
 
   try {
-    // 🔍 Check if station is online in station_stats
     const statsDoc = await db.collection("station_stats").doc(imei).get();
-
     if (!statsDoc.exists) {
-      return res.status(404).json({ error: "Station stats not found" });
+      return res.status(404).json({ error: "Station stats not found ❌" });
     }
 
     const isOnline = statsDoc.data().station_status === "Online";
@@ -152,26 +150,34 @@ app.post("/api/pay/:stationCode", async (req, res) => {
 
     if (!approved) {
       return res.status(400).json({
-        error: "Payment not approved",
-        details: waafiRes.data,
+        error: "Payment not approved ❌",
+        waafiResponse: waafiRes.data,
       });
     }
 
-    const unlockRes = await releaseBattery(imei, battery_id, slot_id);
+    // 📝 Log rental to Firestore first
+    const rentalRef = await db.collection("rentals").add({
+      imei,
+      stationCode,
+      battery_id,
+      slot_id,
+      phoneNumber,
+      amount,
+      status: "rented",
+      timestamp: new Date(),
+    });
 
-    // 📝 Log rental to Firestore
-    const rentalLogRes = await axios.post(
-      "https://danabbackend.onrender.com/api/rentals/log",
-      {
-        imei,
-        battery_id,
-        slot_id,
-        amount,
-        phoneNumber,
-      }
-    );
-
-    console.log("✅ Rental log success:", rentalLogRes.data);
+    // 🔓 Then try unlocking
+    let unlockRes;
+    try {
+      unlockRes = await releaseBattery(imei, battery_id, slot_id);
+    } catch (unlockError) {
+      await rentalRef.delete(); // rollback if unlock failed
+      return res.status(500).json({
+        error: "Battery unlock failed ❌",
+        details: unlockError.response?.data || unlockError.message,
+      });
+    }
 
     res.json({
       success: true,
@@ -180,12 +186,12 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       unlock: unlockRes,
     });
   } catch (err) {
-    console.error("Error:", err.response?.data || err.message);
+    console.error("Error:", err);
     res.status(500).json({ error: err.response?.data || err.message });
   }
 });
 
-// 🔌 Routes
+// 📦 Use route modules
 app.use("/api/stations", stationRoutes);
 app.use("/api/rentals", rentalRoutes);
 app.use("/api/stats", statsRoutes);
@@ -202,5 +208,5 @@ setInterval(() => {
 
 // 🚀 Start server
 app.listen(PORT, () => {
-  console.log(`✅ Server running: http://localhost:${PORT}`);
+  console.log(`✅ Server running on http://localhost:${PORT}`);
 });
