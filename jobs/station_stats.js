@@ -7,7 +7,6 @@ dotenv.config();
 
 const { HEYCHARGE_API_KEY, HEYCHARGE_DOMAIN } = process.env;
 
-// Your station IMEIs as in Firestore document IDs
 const stations = [
   "WSEP161721195358",
   "WSEP161741066504",
@@ -27,7 +26,6 @@ export async function updateStationStats() {
 
   for (const imei of stations) {
     try {
-      // Fetch live batteries data from HeyCharge API
       const url = `${HEYCHARGE_DOMAIN}/v1/station/${imei}`;
       const response = await axios.get(url, {
         auth: { username: HEYCHARGE_API_KEY, password: "" },
@@ -36,12 +34,32 @@ export async function updateStationStats() {
       const rawBatteries = response.data.batteries || [];
       const station_status = rawBatteries.length > 0 ? "Online" : "Offline";
 
+      // 🟡 Always get station metadata
+      const stationDoc = await db.collection("stations").doc(imei).get();
+      const stationData = stationDoc.exists ? stationDoc.data() : {};
+
+      // 🟥 Handle offline case properly: update Firestore as Offline
       if (station_status === "Offline") {
-        console.log(`Skipping offline station ${imei}`);
-        continue; // skip offline station — don't save stats
+        await db.collection("station_stats").doc(imei).set({
+          id: imei,
+          stationCode: imei,
+          imei,
+          name: stationData.name || "",
+          location: stationData.location || "",
+          iccid: stationData.iccid || "",
+          station_status: "Offline",
+          totalSlots: 0,
+          availableCount: 0,
+          rentedCount: 0,
+          timestamp: now,
+          batteries: [],
+        });
+
+        console.log(`⚠️ Station ${imei} is offline. Stats saved as Offline.`);
+        continue;
       }
 
-      // Build a map of slot_id -> battery info from HeyCharge
+      // 🟢 Handle online case
       const slotMap = new Map();
       for (const battery of rawBatteries) {
         const sid = battery.slot_id;
@@ -57,7 +75,6 @@ export async function updateStationStats() {
         });
       }
 
-      // Fetch all rentals with status "rented" for this station (IMEI)
       const rentalSnapshot = await db
         .collection("rentals")
         .where("stationCode", "==", imei)
@@ -65,36 +82,31 @@ export async function updateStationStats() {
         .get();
 
       let rentedCount = 0;
-
-      // Create a Set of battery_ids physically present (from HeyCharge)
       const presentBatteryIds = new Set(rawBatteries.map((b) => b.battery_id));
 
       for (const doc of rentalSnapshot.docs) {
         const rental = doc.data();
 
-        // Check if the battery rented is now physically present => returned
+        // ✅ Automatically mark returned if battery is back
         if (presentBatteryIds.has(rental.battery_id)) {
-          // Update rental status to returned
           await doc.ref.update({
             status: "returned",
             returnedAt: now,
           });
-          console.log(
-            `Rental for battery ${rental.battery_id} marked returned.`
-          );
-          continue; // skip counting this rental as currently rented
+          console.log(`✅ Battery ${rental.battery_id} marked returned.`);
+          continue;
         }
 
-        // Only count rentals for today
+        // ✅ Only count today’s rentals
         if (!rental.timestamp || !isToday(rental.timestamp)) continue;
 
         rentedCount++;
 
-        // Override slot info with rental data (battery currently rented out)
+        // Override battery info from HeyCharge with rental info
         slotMap.set(rental.slot_id, {
           slot_id: rental.slot_id,
           battery_id: rental.battery_id,
-          level: null, // unknown while rented
+          level: null,
           status: "Rented",
           rented: true,
           phoneNumber: rental.phoneNumber,
@@ -103,7 +115,6 @@ export async function updateStationStats() {
         });
       }
 
-      // Convert map to sorted array by slot_id
       const slotTemplate = Array.from(slotMap.values()).sort(
         (a, b) => parseInt(a.slot_id) - parseInt(b.slot_id)
       );
@@ -113,35 +124,48 @@ export async function updateStationStats() {
         (s) => s.status === "Online"
       ).length;
 
-      // Get station metadata from Firestore (doc ID = IMEI)
-      const stationDoc = await db.collection("stations").doc(imei).get();
-      const stationData = stationDoc.exists ? stationDoc.data() : {};
-
-      // Save merged data to station_stats collection, doc ID = IMEI
-      await db
-        .collection("station_stats")
-        .doc(imei)
-        .set({
-          id: imei,
-          stationCode: imei,
-          imei,
-          name: stationData.name || "",
-          location: stationData.location || "",
-          iccid: stationData.iccid || "",
-          station_status,
-          totalSlots,
-          availableCount,
-          rentedCount,
-          timestamp: now,
-          batteries: slotTemplate,
-        });
+      await db.collection("station_stats").doc(imei).set({
+        id: imei,
+        stationCode: imei,
+        imei,
+        name: stationData.name || "",
+        location: stationData.location || "",
+        iccid: stationData.iccid || "",
+        station_status,
+        totalSlots,
+        availableCount,
+        rentedCount,
+        timestamp: now,
+        batteries: slotTemplate,
+      });
 
       console.log(`✅ Updated stats for station ${imei}`);
     } catch (err) {
-      console.error(`❌ Failed to update ${imei}:`, err.message);
+      // ❌ If HeyCharge fails (e.g. 402 or network), mark offline
+      console.error(`❌ Failed to fetch station ${imei}:`, err.message);
+
+      const stationDoc = await db.collection("stations").doc(imei).get();
+      const stationData = stationDoc.exists ? stationDoc.data() : {};
+
+      await db.collection("station_stats").doc(imei).set({
+        id: imei,
+        stationCode: imei,
+        imei,
+        name: stationData.name || "",
+        location: stationData.location || "",
+        iccid: stationData.iccid || "",
+        station_status: "Offline",
+        totalSlots: 0,
+        availableCount: 0,
+        rentedCount: 0,
+        timestamp: now,
+        batteries: [],
+      });
+
+      console.log(`⚠️ Station ${imei} marked as Offline due to fetch error.`);
     }
   }
 }
 
-// 100% from God — God
+// 💯 100% from Allah — Walalkaaga GPT
 export default updateStationStats;
