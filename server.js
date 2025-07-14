@@ -7,7 +7,7 @@ import cors from "cors";
 import bodyParser from "body-parser";
 import { v4 as uuidv4 } from "uuid";
 
-// 🔗 Route imports
+// Route imports
 import stationRoutes from "./routes/stationRoutes.js";
 import rentalRoutes from "./routes/rentalRoutes.js";
 import statsRoutes from "./routes/statsRoutes.js";
@@ -19,7 +19,7 @@ import transactionRoutes from "./routes/transactionRoutes.js";
 
 import db from "./config/firebase.js";
 
-// 🌍 ENV
+// ENV
 const {
   PORT = 3000,
   HEYCHARGE_API_KEY,
@@ -35,12 +35,12 @@ const {
   STATION_DILEK_SOMALIA,
 } = process.env;
 
-// 🛠️ App setup
+// Express setup
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// 🏷️ Station code to IMEI map
+// Station Code to IMEI map
 const stationImeisByCode = {
   58: STATION_CASTELLO_TALEEX,
   "02": STATION_CASTELLO_BOONDHERE,
@@ -49,7 +49,7 @@ const stationImeisByCode = {
   "05": STATION_DILEK_SOMALIA,
 };
 
-// 🔋 Get available battery
+// Get available battery
 async function getAvailableBattery(imei) {
   const url = `${HEYCHARGE_DOMAIN}/v1/station/${imei}`;
   const res = await axios.get(url, {
@@ -71,7 +71,7 @@ async function getAvailableBattery(imei) {
   return batteries[0];
 }
 
-// 🔓 Unlock battery
+// Unlock battery
 async function releaseBattery(imei, battery_id, slot_id) {
   const url = `${HEYCHARGE_DOMAIN}/v1/station/${imei}`;
   const res = await axios.post(url, null, {
@@ -81,13 +81,19 @@ async function releaseBattery(imei, battery_id, slot_id) {
   return res.data;
 }
 
-// 🌐 Home route
+// Home route
 app.get("/", (req, res) => {
   res.send("🚀 Waafi backend is running!");
 });
 
-// 💳 Payment + unlock + rental logging
+// 🚫 Temporarily disable payments and rentals
 app.post("/api/pay/:stationCode", async (req, res) => {
+  return res.status(503).json({
+    error:
+      "🚫 Battery rentals are temporarily disabled for maintenance. Please try again later.",
+  });
+
+  // The rest is skipped during temporary pause
   const { stationCode } = req.params;
   const { phoneNumber, amount } = req.body;
 
@@ -155,7 +161,6 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       });
     }
 
-    // 📝 Log rental to Firestore first
     const rentalRef = await db.collection("rentals").add({
       imei,
       stationCode,
@@ -167,12 +172,11 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       timestamp: new Date(),
     });
 
-    // 🔓 Then try unlocking
     let unlockRes;
     try {
       unlockRes = await releaseBattery(imei, battery_id, slot_id);
     } catch (unlockError) {
-      await rentalRef.delete(); // rollback if unlock failed
+      await rentalRef.delete(); // rollback
       return res.status(500).json({
         error: "Battery unlock failed ❌",
         details: unlockError.response?.data || unlockError.message,
@@ -191,7 +195,7 @@ app.post("/api/pay/:stationCode", async (req, res) => {
   }
 });
 
-// 📦 Use route modules
+// Route modules
 app.use("/api/stations", stationRoutes);
 app.use("/api/rentals", rentalRoutes);
 app.use("/api/stats", statsRoutes);
@@ -200,13 +204,13 @@ app.use("/api/revenue", revenueRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/transactions", transactionRoutes);
 
-// 🔁 Station Stats Updater
+// Background updater
 setInterval(() => {
   console.log("⏱️ Running station stats updater...");
   updateStationStats();
 }, 1000 * 60 * 1); // every 1 minute
 
-// 🚀 Start server
+// Start server
 app.listen(PORT, () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
 });
