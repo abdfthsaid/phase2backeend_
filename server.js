@@ -186,7 +186,7 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       unlock: unlockRes,
     });
   } catch (err) {
-    console.error("Error:", err);
+    // console.error("Error:", err);
     res.status(500).json({ error: err.response?.data || err.message });
   }
 });
