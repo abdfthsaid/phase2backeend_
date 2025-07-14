@@ -204,7 +204,7 @@ app.use("/api/transactions", transactionRoutes);
 setInterval(() => {
   console.log("⏱️ Running station stats updater...");
   updateStationStats();
-}, 1000 * 60 * 1); // every 1 minute
+}, 1000 * 60 * 5); // every 1 minute
 
 // 🚀 Start server
 app.listen(PORT, () => {
