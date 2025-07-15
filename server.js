@@ -200,11 +200,11 @@ app.use("/api/revenue", revenueRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/transactions", transactionRoutes);
 
-// 🔁 Station Stats Updater
-setInterval(() => {
-  console.log("⏱️ Running station stats updater...");
-  updateStationStats();
-}, 1000 * 60 * 5); // every 1 minute
+// // 🔁 Station Stats Updater
+// setInterval(() => {
+//   console.log("⏱️ Running station stats updater...");
+//   updateStationStats();
+// }, 1000 * 60 * 5); // every 1 minute
 
 // 🚀 Start server
 app.listen(PORT, () => {
