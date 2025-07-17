@@ -15,7 +15,7 @@ const stations = [
   "WSEP161741066503",
 ];
 
-// 🧠 Local in-memory cache for station metadata
+// 🧠 In-memory cache
 const stationCache = {};
 
 function isToday(timestamp) {
@@ -34,17 +34,22 @@ export async function updateStationStats() {
         auth: { username: HEYCHARGE_API_KEY, password: "" },
       });
 
-      const rawBatteries = response.data.batteries || [];
-      const station_status = rawBatteries.length > 0 ? "Online" : "Offline";
+      const data = response.data;
+      const rawBatteries = data.batteries || [];
+      const heyStatus = data.station_status || "Online";
 
-      // 🟡 Use cached station data if available
+      // Use HeyCharge status if available
+      const station_status = heyStatus === "Offline" ? "Offline" : "Online";
+
+      // 🟡 Get station info from cache or Firestore
       let stationData = stationCache[imei];
       if (!stationData) {
-        const stationDoc = await db.collection("stations").doc(imei).get();
-        stationData = stationDoc.exists ? stationDoc.data() : {};
+        const doc = await db.collection("stations").doc(imei).get();
+        stationData = doc.exists ? doc.data() : {};
         stationCache[imei] = stationData;
       }
 
+      // If HeyCharge says it's offline, store minimal info
       if (station_status === "Offline") {
         await db
           .collection("station_stats")
@@ -56,15 +61,15 @@ export async function updateStationStats() {
             name: stationData.name || "",
             location: stationData.location || "",
             iccid: stationData.iccid || "",
-            station_status: "Offline",
+            station_status,
             totalSlots: 0,
             availableCount: 0,
             rentedCount: 0,
             timestamp: now,
             batteries: [],
+            message: "❌ Station marked offline by HeyCharge",
           });
-
-        console.log(`⚠️ Station ${imei} is offline. Stats saved as Offline.`);
+        console.log(`⚠️ Station ${imei} is Offline as per HeyCharge.`);
         continue;
       }
 
@@ -83,6 +88,7 @@ export async function updateStationStats() {
         });
       }
 
+      // Get rentals in progress
       const rentalSnapshot = await db
         .collection("rentals")
         .where("stationCode", "==", imei)
@@ -95,17 +101,13 @@ export async function updateStationStats() {
       for (const doc of rentalSnapshot.docs) {
         const rental = doc.data();
 
-        // ✅ Auto-return if battery is now physically present
+        // Auto-return if battery now present
         if (presentBatteryIds.has(rental.battery_id)) {
-          await doc.ref.update({
-            status: "returned",
-            returnedAt: now,
-          });
-          console.log(`✅ Battery ${rental.battery_id} marked returned.`);
+          await doc.ref.update({ status: "returned", returnedAt: now });
+          console.log(`✅ Battery ${rental.battery_id} marked returned`);
           continue;
         }
 
-        // ✅ Log today's rentals only
         if (!rental.timestamp || !isToday(rental.timestamp)) continue;
 
         rentedCount++;
@@ -147,6 +149,9 @@ export async function updateStationStats() {
           rentedCount,
           timestamp: now,
           batteries: slotTemplate,
+          ...(availableCount === 0 && {
+            message: "❌ No available battery ≥ 60%",
+          }),
         });
 
       console.log(`✅ Updated stats for station ${imei}`);
@@ -155,8 +160,8 @@ export async function updateStationStats() {
 
       let stationData = stationCache[imei];
       if (!stationData) {
-        const stationDoc = await db.collection("stations").doc(imei).get();
-        stationData = stationDoc.exists ? stationDoc.data() : {};
+        const doc = await db.collection("stations").doc(imei).get();
+        stationData = doc.exists ? doc.data() : {};
         stationCache[imei] = stationData;
       }
 
@@ -176,9 +181,10 @@ export async function updateStationStats() {
           rentedCount: 0,
           timestamp: now,
           batteries: [],
+          message: "❌ Failed to fetch station info",
         });
 
-      console.warn(`⚠️ Station ${imei} marked as Offline due to fetch error.`);
+      console.warn(`⚠️ Station ${imei} marked as Offline due to error.`);
     }
   }
 }
