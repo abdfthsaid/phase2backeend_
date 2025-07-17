@@ -17,7 +17,6 @@ const stations = [
 
 const stationCache = {};
 
-// Check if Firestore timestamp is from today
 function isToday(timestamp) {
   const now = new Date();
   const date = timestamp.toDate();
@@ -29,7 +28,6 @@ export async function updateStationStats() {
 
   for (const imei of stations) {
     try {
-      // Fetch HeyCharge station data
       const url = `${HEYCHARGE_DOMAIN}/v1/station/${imei}`;
       const response = await axios.get(url, {
         auth: { username: HEYCHARGE_API_KEY, password: "" },
@@ -42,7 +40,6 @@ export async function updateStationStats() {
 
       console.log(`🛰️ ${imei} HeyCharge says: ${heyStatus}`);
 
-      // Load station metadata (cache or Firestore)
       let stationData = stationCache[imei];
       if (!stationData) {
         const doc = await db.collection("stations").doc(imei).get();
@@ -50,7 +47,6 @@ export async function updateStationStats() {
         stationCache[imei] = stationData;
       }
 
-      // If station offline per HeyCharge, set offline and continue
       if (station_status === "Offline") {
         await db.collection("station_stats").doc(imei).set({
           id: imei,
@@ -71,7 +67,6 @@ export async function updateStationStats() {
         continue;
       }
 
-      // Build slot map from HeyCharge batteries
       const slotMap = new Map();
       for (const battery of rawBatteries) {
         slotMap.set(battery.slot_id, {
@@ -86,10 +81,9 @@ export async function updateStationStats() {
         });
       }
 
-      // Get rentals with status rented for this station
       const rentalSnapshot = await db
         .collection("rentals")
-        .where("stationCode", "==", imei)
+        .where("imei", "==", imei)
         .where("status", "==", "rented")
         .get();
 
@@ -99,19 +93,20 @@ export async function updateStationStats() {
       for (const doc of rentalSnapshot.docs) {
         const rental = doc.data();
 
-        // Auto-return if battery physically present again
+        // 🔍 DEBUG LOG: Rental document details
+        console.log(`📄 Rental doc: ${doc.id}, timestamp: ${rental.timestamp?.toDate()}`);
+        console.log(`📅 Is today: ${rental.timestamp && isToday(rental.timestamp)}`);
+
         if (presentBatteryIds.has(rental.battery_id)) {
           await doc.ref.update({ status: "returned", returnedAt: now });
           console.log(`↩️ Auto-returned ${rental.battery_id}`);
           continue;
         }
 
-        // Only consider rentals from today
         if (!rental.timestamp || !isToday(rental.timestamp)) continue;
 
         rentedCount++;
 
-        // Override slot info with rental info
         slotMap.set(rental.slot_id, {
           slot_id: rental.slot_id,
           battery_id: rental.battery_id,
@@ -124,7 +119,6 @@ export async function updateStationStats() {
         });
       }
 
-      // Sort slots by slot_id ascending
       const slotTemplate = Array.from(slotMap.values()).sort(
         (a, b) => parseInt(a.slot_id) - parseInt(b.slot_id)
       );
@@ -132,7 +126,6 @@ export async function updateStationStats() {
       const totalSlots = slotTemplate.length;
       const availableCount = slotTemplate.filter((s) => s.status === "Online").length;
 
-      // Update Firestore with combined station stats
       await db.collection("station_stats").doc(imei).set({
         id: imei,
         stationCode: imei,
@@ -162,7 +155,6 @@ export async function updateStationStats() {
         stationCache[imei] = stationData;
       }
 
-      // Mark station offline on error
       await db.collection("station_stats").doc(imei).set({
         id: imei,
         stationCode: imei,
