@@ -86,7 +86,7 @@ app.get("/", (req, res) => {
   res.send("🚀 Waafi backend is running!");
 });
 
-// 💳 Payment + unlock (⛔ skipping rental logging & station status)
+// 💳 Payment + rental logging + unlock battery
 app.post("/api/pay/:stationCode", async (req, res) => {
   const { stationCode } = req.params;
   const { phoneNumber, amount } = req.body;
@@ -101,15 +101,15 @@ app.post("/api/pay/:stationCode", async (req, res) => {
   }
 
   try {
-    // ⛔ Skipping station_stats status check
-    // const statsDoc = await db.collection("station_stats").doc(imei).get();
-    // if (!statsDoc.exists) {
-    //   return res.status(404).json({ error: "Station stats not found ❌" });
-    // }
-    // const isOnline = statsDoc.data().station_status === "Online";
-    // if (!isOnline) {
-    //   return res.status(403).json({ error: "Station is currently offline ⛔" });
-    // }
+    // ✅ Check station online status before proceeding
+    const statsDoc = await db.collection("station_stats").doc(imei).get();
+    if (!statsDoc.exists) {
+      return res.status(404).json({ error: "Station stats not found ❌" });
+    }
+    const isOnline = statsDoc.data().station_status === "Online";
+    if (!isOnline) {
+      return res.status(403).json({ error: "Station is currently offline ⛔" });
+    }
 
     const battery = await getAvailableBattery(imei);
     if (!battery) {
@@ -118,6 +118,7 @@ app.post("/api/pay/:stationCode", async (req, res) => {
 
     const { battery_id, slot_id } = battery;
 
+    // 🔐 Step 1: WAAFI payment request
     const waafiPayload = {
       schemaVersion: "1.0",
       requestId: uuidv4(),
@@ -155,23 +156,24 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       });
     }
 
-    // ⛔ Skipped rental logging (for testing only)
-    // const rentalRef = await db.collection("rentals").add({
-    //   imei,
-    //   stationCode,
-    //   battery_id,
-    //   slot_id,
-    //   phoneNumber,
-    //   amount,
-    //   status: "rented",
-    //   timestamp: new Date(),
-    // });
+    // 📝 Step 2: Log rental to Firestore
+    const rentalRef = await db.collection("rentals").add({
+      imei,
+      stationCode,
+      battery_id,
+      slot_id,
+      phoneNumber,
+      amount,
+      status: "rented",
+      timestamp: new Date(),
+    });
 
+    // 🔓 Step 3: Unlock battery
     let unlockRes;
     try {
       unlockRes = await releaseBattery(imei, battery_id, slot_id);
     } catch (unlockError) {
-      // await rentalRef.delete(); // rollback skipped
+      await rentalRef.delete(); // Rollback if unlock fails
       return res.status(500).json({
         error: "Battery unlock failed ❌",
         details: unlockError.response?.data || unlockError.message,
@@ -185,11 +187,12 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       unlock: unlockRes,
     });
   } catch (err) {
+    console.error("❌ General error:", err);
     res.status(500).json({ error: err.response?.data || err.message });
   }
 });
 
-// 📦 Use route modules
+// 📦 Routes
 app.use("/api/stations", stationRoutes);
 app.use("/api/rentals", rentalRoutes);
 app.use("/api/stats", statsRoutes);
@@ -198,13 +201,13 @@ app.use("/api/revenue", revenueRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/transactions", transactionRoutes);
 
-// ⛔ Commented out station stats updater
-// setInterval(() => {
-//   console.log("⏱️ Running station stats updater...");
-//   updateStationStats();
-// }, 1000 * 60 * 5); // every 5 minutes
+// 🔁 : Auto update station stats every 5 minutes
+setInterval(() => {
+  console.log("⏱️ Updating station stats...");
+  updateStationStats();
+}, 5 * 60 * 1000);
 
-// 🚀 Start server
+// 🚀 Server start
 app.listen(PORT, () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
 });
