@@ -206,9 +206,11 @@ app.use("/api/transactions", transactionRoutes);
 setInterval(() => {
   console.log("⏱️ Updating station stats...");
   updateStationStats();
-}, 5 * 60 * 1000);
+}, 1 * 60 * 1000);
 
 // 🚀 Server start
 app.listen(PORT, () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
 });
+
+// god makes
