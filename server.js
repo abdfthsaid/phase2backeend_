@@ -48,6 +48,7 @@ const stationImeisByCode = {
   "04": STATION_JAVA_AIRPORT,
   "05": STATION_DILEK_SOMALIA,
 };
+// goooo
 
 // 🔋 Get available battery
 async function getAvailableBattery(imei) {
