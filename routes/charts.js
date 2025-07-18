@@ -7,11 +7,11 @@ const router = express.Router();
 
 // Map IMEI -> stationCode
 const imeiToStationCode = {
-  WSEP161721195358: "58",
-  WSEP161741066504: "04",
-  WSEP161741066505: "05",
-  WSEP161741066502: "02",
-  WSEP161741066503: "03",
+  "WSEP161721195358": "58",
+  "WSEP161741066504": "04",
+  "WSEP161741066505": "05",
+  "WSEP161741066502": "02",
+  "WSEP161741066503": "03",
 };
 
 // Helper: get ISO date string for day
@@ -36,8 +36,7 @@ function getWeekNumber(d) {
 router.get("/:stationCode", async (req, res) => {
   try {
     const { stationCode } = req.params;
-    if (!stationCode)
-      return res.status(400).json({ error: "stationCode is required" });
+    if (!stationCode) return res.status(400).json({ error: "stationCode is required" });
 
     const rentalsRef = db.collection("rentals");
     const snapshot = await rentalsRef
@@ -46,23 +45,16 @@ router.get("/:stationCode", async (req, res) => {
       .get();
 
     // initialize aggregators
-    const dailyRev = {},
-      weeklyRev = {},
-      monthlyRev = {};
-    const dailyCust = {},
-      weeklyCust = {},
-      monthlyCust = {};
+    const dailyRev = {}, weeklyRev = {}, monthlyRev = {};
+    const dailyCust = {}, weeklyCust = {}, monthlyCust = {};
 
-    snapshot.forEach((doc) => {
+    snapshot.forEach(doc => {
       const r = doc.data();
       if (!r.timestamp) return;
       const ts = r.timestamp.toDate();
       const day = isoDate(ts);
       const week = `Week ${getWeekNumber(ts)}`;
-      const month = ts.toLocaleString("default", {
-        year: "numeric",
-        month: "long",
-      });
+      const month = ts.toLocaleString("default", { year: "numeric", month: "long" });
       const amt = parseFloat(r.amount) || 0;
       const phone = r.phoneNumber || "";
 
@@ -83,12 +75,8 @@ router.get("/:stationCode", async (req, res) => {
 
     const build = (rev, cust) => ({
       labels: Object.keys(rev).sort(),
-      data: Object.keys(rev)
-        .sort()
-        .map((k) => rev[k]),
-      customers: Object.keys(cust)
-        .sort()
-        .map((k) => cust[k].size),
+      data: Object.keys(rev).sort().map(k => rev[k]),
+      customers: Object.keys(cust).sort().map(k => cust[k].size)
     });
 
     res.json({
@@ -96,6 +84,7 @@ router.get("/:stationCode", async (req, res) => {
       weekly: build(weeklyRev, weeklyCust),
       monthly: build(monthlyRev, monthlyCust),
     });
+
   } catch (err) {
     console.error("Charts error:", err);
     res.status(500).json({ error: "Failed to calculate charts" });
