@@ -1,93 +1,105 @@
-const express = require("express");
-const router = express.Router();
-const { getFirestore } = require("firebase-admin/firestore");
-const db = getFirestore();
+// routes/charts.js
+import express from "express";
+import db from "../config/firebase.js";
+import { Timestamp } from "firebase-admin/firestore";
 
-// Mapping IMEI to station codes
+const router = express.Router();
+
+// Map IMEI -> stationCode
 const imeiToStationCode = {
-  "WSEP161721195358": "58",
-  "WSEP161741066504": "04",
-  "WSEP161741066505": "05",
-  "WSEP161741066502": "02",
-  "WSEP161741066503": "03",
+  WSEP161721195358: "58",
+  WSEP161741066504: "04",
+  WSEP161741066505: "05",
+  WSEP161741066502: "02",
+  WSEP161741066503: "03",
 };
 
-// Helper to get week number
-function getWeekNumber(date) {
-  const temp = new Date(date);
-  temp.setHours(0, 0, 0, 0);
-  temp.setDate(temp.getDate() + 4 - (temp.getDay() || 7));
-  const yearStart = new Date(temp.getFullYear(), 0, 1);
-  return Math.ceil((((temp - yearStart) / 86400000) + 1) / 7);
+// Helper: get ISO date string for day
+function isoDate(d) {
+  const dt = new Date(d);
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, "0");
+  const day = String(dt.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
-router.post("/charts", async (req, res) => {
-  const { imei } = req.body;
-  const stationCode = imeiToStationCode[imei];
+// Helper: ISO week number (Mon–Sun)
+function getWeekNumber(d) {
+  const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = dt.getUTCDay() || 7;
+  dt.setUTCDate(dt.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
+  return Math.ceil(((dt - yearStart) / 86400000 + 1) / 7);
+}
 
-  if (!stationCode) {
-    return res.status(400).json({ error: "Invalid IMEI or station not found." });
-  }
-
+// GET /api/charts/:stationCode
+router.get("/:stationCode", async (req, res) => {
   try {
-    const snapshot = await db.collection("payment")
-      .where("station", "==", stationCode)
+    const { stationCode } = req.params;
+    if (!stationCode)
+      return res.status(400).json({ error: "stationCode is required" });
+
+    const rentalsRef = db.collection("rentals");
+    const snapshot = await rentalsRef
+      .where("stationCode", "==", stationCode)
+      .where("status", "in", ["rented", "returned"])
       .get();
 
-    const dailyMap = {};
-    const weeklyMap = {};
-    const monthlyMap = {};
+    // initialize aggregators
+    const dailyRev = {},
+      weeklyRev = {},
+      monthlyRev = {};
+    const dailyCust = {},
+      weeklyCust = {},
+      monthlyCust = {};
 
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      const dateObj = new Date(data.timestamp._seconds * 1000); // Firestore timestamp
-      const dateStr = dateObj.toISOString().split("T")[0];
-      const week = "Week " + getWeekNumber(dateObj);
-      const month = dateObj.toLocaleString("default", { month: "long" });
+    snapshot.forEach((doc) => {
+      const r = doc.data();
+      if (!r.timestamp) return;
+      const ts = r.timestamp.toDate();
+      const day = isoDate(ts);
+      const week = `Week ${getWeekNumber(ts)}`;
+      const month = ts.toLocaleString("default", {
+        year: "numeric",
+        month: "long",
+      });
+      const amt = parseFloat(r.amount) || 0;
+      const phone = r.phoneNumber || "";
 
       // Revenue
-      dailyMap[dateStr] = (dailyMap[dateStr] || 0) + data.amount;
-      weeklyMap[week] = (weeklyMap[week] || 0) + data.amount;
-      monthlyMap[month] = (monthlyMap[month] || 0) + data.amount;
+      dailyRev[day] = (dailyRev[day] || 0) + amt;
+      weeklyRev[week] = (weeklyRev[week] || 0) + amt;
+      monthlyRev[month] = (monthlyRev[month] || 0) + amt;
 
-      // Customers (count per date/week/month)
-      dailyMap[`${dateStr}_count`] = (dailyMap[`${dateStr}_count`] || 0) + 1;
-      weeklyMap[`${week}_count`] = (weeklyMap[`${week}_count`] || 0) + 1;
-      monthlyMap[`${month}_count`] = (monthlyMap[`${month}_count`] || 0) + 1;
+      // Unique customer count
+      dailyCust[day] = dailyCust[day] || new Set();
+      weeklyCust[week] = weeklyCust[week] || new Set();
+      monthlyCust[month] = monthlyCust[month] || new Set();
+
+      dailyCust[day].add(phone);
+      weeklyCust[week].add(phone);
+      monthlyCust[month].add(phone);
     });
 
-    const formatData = (map, isCustomer = false) => {
-      const labelSet = new Set();
-      const dataArr = [];
-
-      Object.keys(map).forEach(key => {
-        if (!key.includes("_count")) {
-          labelSet.add(key);
-        }
-      });
-
-      const labels = Array.from(labelSet).sort();
-      labels.forEach(label => {
-        const value = isCustomer ? map[`${label}_count`] : map[label];
-        dataArr.push(value);
-      });
-
-      return { labels, data: dataArr };
-    };
+    const build = (rev, cust) => ({
+      labels: Object.keys(rev).sort(),
+      data: Object.keys(rev)
+        .sort()
+        .map((k) => rev[k]),
+      customers: Object.keys(cust)
+        .sort()
+        .map((k) => cust[k].size),
+    });
 
     res.json({
-      dailyRevenue: formatData(dailyMap),
-      weeklyRevenue: formatData(weeklyMap),
-      monthlyRevenue: formatData(monthlyMap),
-      dailyCustomers: formatData(dailyMap, true),
-      weeklyCustomers: formatData(weeklyMap, true),
-      monthlyCustomers: formatData(monthlyMap, true),
+      daily: build(dailyRev, dailyCust),
+      weekly: build(weeklyRev, weeklyCust),
+      monthly: build(monthlyRev, monthlyCust),
     });
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Something went wrong." });
+  } catch (err) {
+    console.error("Charts error:", err);
+    res.status(500).json({ error: "Failed to calculate charts" });
   }
 });
 
-module.exports = router;
+export default router;

@@ -202,7 +202,7 @@ app.use("/api/customers", customerRoutes);
 app.use("/api/revenue", revenueRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/transactions", transactionRoutes);
-app.use("/api", chartsRoute);
+app.use("/api/charts", chartsRouter);
 
 // 🔁 : Auto update station stats every 5 minutes
 setInterval(() => {
