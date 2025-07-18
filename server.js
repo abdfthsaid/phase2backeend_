@@ -16,6 +16,7 @@ import customerRoutes from "./routes/customers.js";
 import revenueRoutes from "./routes/revenue.js";
 import userRoutes from "./routes/userRoutes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
+const chartsRoute = require("./routes/charts");
 
 import db from "./config/firebase.js";
 
@@ -48,7 +49,7 @@ const stationImeisByCode = {
   "04": STATION_JAVA_AIRPORT,
   "05": STATION_DILEK_SOMALIA,
 };
-// 
+//
 
 // 🔋 Get available battery
 async function getAvailableBattery(imei) {
@@ -201,6 +202,7 @@ app.use("/api/customers", customerRoutes);
 app.use("/api/revenue", revenueRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/transactions", transactionRoutes);
+app.use("/api", chartsRoute);
 
 // 🔁 : Auto update station stats every 5 minutes
 setInterval(() => {
