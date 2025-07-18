@@ -16,7 +16,7 @@ import customerRoutes from "./routes/customers.js";
 import revenueRoutes from "./routes/revenue.js";
 import userRoutes from "./routes/userRoutes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
-const chartsRoute = require("./routes/charts");
+import chartsRoute from "./routes/charts.js";
 
 import db from "./config/firebase.js";
 
