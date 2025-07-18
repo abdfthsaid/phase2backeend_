@@ -6,9 +6,9 @@ const router = express.Router();
 
 // ✅ IMEI to stationCode mapping
 const imeiToStationCode = {
-  "WSEP161721195358": "01",
-  "WSEP161741066504": "02",
-  "WSEP161741066505": "04",
+  "WSEP161721195358": "58",
+  "WSEP161741066504": "04",
+  "WSEP161741066505": "05",
   "WSEP161741066502": "02",
   "WSEP161741066503": "03",
 };
