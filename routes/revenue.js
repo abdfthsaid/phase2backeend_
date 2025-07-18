@@ -4,9 +4,24 @@ import { Timestamp } from "firebase-admin/firestore";
 
 const router = express.Router();
 
-// ✅ DAILY REVENUE FOR SINGLE STATION (rented OR returned)
-router.get("/daily/:stationCode", async (req, res) => {
-  const { stationCode } = req.params;
+// ✅ IMEI to stationCode mapping
+const imeiToStationCode = {
+  "WSEP161721195358": "01",
+  "WSEP161741066504": "02",
+  "WSEP161741066505": "04",
+  "WSEP161741066502": "02",
+  "WSEP161741066503": "03",
+};
+
+// ✅ DAILY REVENUE FOR SINGLE STATION (by IMEI)
+router.get("/daily/:imei", async (req, res) => {
+  const imei = req.params.imei;
+  const stationCode = imeiToStationCode[imei];
+
+  if (!stationCode) {
+    return res.status(400).json({ error: `Unknown IMEI ${imei}` });
+  }
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -31,6 +46,7 @@ router.get("/daily/:stationCode", async (req, res) => {
     });
 
     res.json({
+      imei,
       stationCode,
       totalRevenueToday: total,
       totalRentalsToday: count,
@@ -77,9 +93,15 @@ router.get("/daily", async (req, res) => {
   }
 });
 
-// ✅ MONTHLY REVENUE FOR SINGLE STATION
-router.get("/monthly/:stationCode", async (req, res) => {
-  const { stationCode } = req.params;
+// ✅ MONTHLY REVENUE FOR SINGLE STATION (by IMEI)
+router.get("/monthly/:imei", async (req, res) => {
+  const imei = req.params.imei;
+  const stationCode = imeiToStationCode[imei];
+
+  if (!stationCode) {
+    return res.status(400).json({ error: `Unknown IMEI ${imei}` });
+  }
+
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
@@ -104,6 +126,7 @@ router.get("/monthly/:stationCode", async (req, res) => {
     });
 
     res.json({
+      imei,
       stationCode,
       totalRevenueMonthly: total,
       totalRentalsThisMonth: count,
