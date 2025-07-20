@@ -5,16 +5,16 @@ import { Timestamp } from "firebase-admin/firestore";
 
 const router = express.Router();
 
-// Map IMEI -> stationCode
+// IMEI -> stationCode mapping
 const imeiToStationCode = {
-  "WSEP161721195358": "58",
-  "WSEP161741066504": "04",
-  "WSEP161741066505": "05",
-  "WSEP161741066502": "02",
-  "WSEP161741066503": "03",
+  WSEP161721195358: "58",
+  WSEP161741066504: "04",
+  WSEP161741066505: "05",
+  WSEP161741066502: "02",
+  WSEP161741066503: "03",
 };
 
-// Helper: get ISO date string for day
+// Helper: get ISO date string
 function isoDate(d) {
   const dt = new Date(d);
   const y = dt.getFullYear();
@@ -23,7 +23,7 @@ function isoDate(d) {
   return `${y}-${m}-${day}`;
 }
 
-// Helper: ISO week number (Mon–Sun)
+// Helper: get ISO week number
 function getWeekNumber(d) {
   const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   const dayNum = dt.getUTCDay() || 7;
@@ -32,11 +32,15 @@ function getWeekNumber(d) {
   return Math.ceil(((dt - yearStart) / 86400000 + 1) / 7);
 }
 
-// GET /api/charts/:stationCode
-router.get("/:stationCode", async (req, res) => {
+// ✅ Route accepts IMEI, converts to stationCode internally
+router.get("/:imei", async (req, res) => {
   try {
-    const { stationCode } = req.params;
-    if (!stationCode) return res.status(400).json({ error: "stationCode is required" });
+    const { imei } = req.params;
+    const stationCode = imeiToStationCode[imei];
+
+    if (!stationCode) {
+      return res.status(400).json({ error: "Invalid IMEI" });
+    }
 
     const rentalsRef = db.collection("rentals");
     const snapshot = await rentalsRef
@@ -44,17 +48,21 @@ router.get("/:stationCode", async (req, res) => {
       .where("status", "in", ["rented", "returned"])
       .get();
 
-    // initialize aggregators
     const dailyRev = {}, weeklyRev = {}, monthlyRev = {};
     const dailyCust = {}, weeklyCust = {}, monthlyCust = {};
 
-    snapshot.forEach(doc => {
+    snapshot.forEach((doc) => {
       const r = doc.data();
       if (!r.timestamp) return;
+
       const ts = r.timestamp.toDate();
       const day = isoDate(ts);
       const week = `Week ${getWeekNumber(ts)}`;
-      const month = ts.toLocaleString("default", { year: "numeric", month: "long" });
+      const month = ts.toLocaleString("default", {
+        year: "numeric",
+        month: "long",
+      });
+
       const amt = parseFloat(r.amount) || 0;
       const phone = r.phoneNumber || "";
 
@@ -63,7 +71,7 @@ router.get("/:stationCode", async (req, res) => {
       weeklyRev[week] = (weeklyRev[week] || 0) + amt;
       monthlyRev[month] = (monthlyRev[month] || 0) + amt;
 
-      // Unique customer count
+      // Unique customers
       dailyCust[day] = dailyCust[day] || new Set();
       weeklyCust[week] = weeklyCust[week] || new Set();
       monthlyCust[month] = monthlyCust[month] || new Set();
@@ -75,19 +83,39 @@ router.get("/:stationCode", async (req, res) => {
 
     const build = (rev, cust) => ({
       labels: Object.keys(rev).sort(),
-      data: Object.keys(rev).sort().map(k => rev[k]),
-      customers: Object.keys(cust).sort().map(k => cust[k].size)
+      data: Object.keys(rev).sort().map((k) => rev[k]),
+      customers: Object.keys(cust).sort().map((k) => cust[k].size),
     });
 
     res.json({
-      daily: build(dailyRev, dailyCust),
-      weekly: build(weeklyRev, weeklyCust),
-      monthly: build(monthlyRev, monthlyCust),
+      dailyRevenue: {
+        labels: build(dailyRev, dailyCust).labels,
+        data: build(dailyRev, dailyCust).data,
+      },
+      weeklyRevenue: {
+        labels: build(weeklyRev, weeklyCust).labels,
+        data: build(weeklyRev, weeklyCust).data,
+      },
+      monthlyRevenue: {
+        labels: build(monthlyRev, monthlyCust).labels,
+        data: build(monthlyRev, monthlyCust).data,
+      },
+      dailyCustomers: {
+        labels: build(dailyRev, dailyCust).labels,
+        data: build(dailyRev, dailyCust).customers,
+      },
+      weeklyCustomers: {
+        labels: build(weeklyRev, weeklyCust).labels,
+        data: build(weeklyRev, weeklyCust).customers,
+      },
+      monthlyCustomers: {
+        labels: build(monthlyRev, monthlyCust).labels,
+        data: build(monthlyRev, monthlyCust).customers,
+      },
     });
-
   } catch (err) {
     console.error("Charts error:", err);
-    res.status(500).json({ error: "Failed to calculate charts" });
+    res.status(500).json({ error: "Failed to generate charts" });
   }
 });
 

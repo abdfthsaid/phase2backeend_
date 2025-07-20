@@ -17,6 +17,8 @@ import revenueRoutes from "./routes/revenue.js";
 import userRoutes from "./routes/userRoutes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
 import chartsRoute from "./routes/charts.js";
+import chartsAll from "./routes/chartsAll.js";
+
 // ...
 import db from "./config/firebase.js";
 
@@ -203,6 +205,7 @@ app.use("/api/revenue", revenueRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/charts", chartsRoute);
+app.use("/api/chartsAll", chartsAll);
 
 // 🔁 : Auto update station stats every 5 minutes
 setInterval(() => {
