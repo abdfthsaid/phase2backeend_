@@ -1,8 +1,8 @@
-const express = require("express");
-const router = express.Router();
+import express from "express";
+import moment from "moment";
 import db from "../config/firebase.js";
 
-const moment = require("moment");
+const router = express.Router();
 
 router.get("/all", async (req, res) => {
   try {
@@ -66,4 +66,4 @@ router.get("/all", async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
