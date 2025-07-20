@@ -48,8 +48,12 @@ router.get("/:imei", async (req, res) => {
       .where("status", "in", ["rented", "returned"])
       .get();
 
-    const dailyRev = {}, weeklyRev = {}, monthlyRev = {};
-    const dailyCust = {}, weeklyCust = {}, monthlyCust = {};
+    const dailyRev = {},
+      weeklyRev = {},
+      monthlyRev = {};
+    const dailyCust = {},
+      weeklyCust = {},
+      monthlyCust = {};
 
     snapshot.forEach((doc) => {
       const r = doc.data();
@@ -83,8 +87,12 @@ router.get("/:imei", async (req, res) => {
 
     const build = (rev, cust) => ({
       labels: Object.keys(rev).sort(),
-      data: Object.keys(rev).sort().map((k) => rev[k]),
-      customers: Object.keys(cust).sort().map((k) => cust[k].size),
+      data: Object.keys(rev)
+        .sort()
+        .map((k) => rev[k]),
+      customers: Object.keys(cust)
+        .sort()
+        .map((k) => cust[k].size),
     });
 
     res.json({

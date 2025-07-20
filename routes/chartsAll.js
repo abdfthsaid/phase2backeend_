@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { db } = require("../firebase");
+import db from "../config/firebase.js";
 
 const moment = require("moment");
 
@@ -16,7 +16,7 @@ router.get("/all", async (req, res) => {
     const weeklyCustomers = {};
     const monthlyCustomers = {};
 
-    rentalsSnapshot.forEach(doc => {
+    rentalsSnapshot.forEach((doc) => {
       const data = doc.data();
       const { timestamp, amount, phoneNumber } = data;
 
@@ -45,7 +45,7 @@ router.get("/all", async (req, res) => {
 
     const formatChart = (obj, isSet = false) => {
       const labels = Object.keys(obj).sort();
-      const data = labels.map(label =>
+      const data = labels.map((label) =>
         isSet ? Array.from(obj[label]).length : obj[label]
       );
       return { labels, data };
@@ -58,9 +58,8 @@ router.get("/all", async (req, res) => {
 
       dailyCustomers: formatChart(dailyCustomers, true),
       weeklyCustomers: formatChart(weeklyCustomers, true),
-      monthlyCustomers: formatChart(monthlyCustomers, true)
+      monthlyCustomers: formatChart(monthlyCustomers, true),
     });
-
   } catch (err) {
     console.error("Error in /api/charts/all:", err);
     res.status(500).json({ error: "Internal server error" });
