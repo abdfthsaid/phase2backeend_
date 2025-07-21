@@ -67,6 +67,7 @@ export async function updateStationStats() {
         continue;
       }
 
+      // Map of slot_id -> slot info
       const slotMap = new Map();
       for (const battery of rawBatteries) {
         slotMap.set(battery.slot_id, {
@@ -93,20 +94,30 @@ export async function updateStationStats() {
       for (const doc of rentalSnapshot.docs) {
         const rental = doc.data();
 
-        // 🔍 DEBUG LOG: Rental document details
         console.log(`📄 Rental doc: ${doc.id}, timestamp: ${rental.timestamp?.toDate()}`);
         console.log(`📅 Is today: ${rental.timestamp && isToday(rental.timestamp)}`);
 
         if (presentBatteryIds.has(rental.battery_id)) {
-          await doc.ref.update({ status: "returned", returnedAt: now });
-          console.log(`↩️ Auto-returned ${rental.battery_id}`);
-          continue;
+          // Check if the battery is marked available (online) in slotMap
+          const batterySlot = Array.from(slotMap.values()).find(
+            (slot) => slot.battery_id === rental.battery_id
+          );
+
+          const isActuallyAvailable = batterySlot && batterySlot.status === "Online";
+
+          if (isActuallyAvailable) {
+            await doc.ref.update({ status: "returned", returnedAt: now });
+            console.log(`↩️ Auto-returned ${rental.battery_id}`);
+            continue;
+          }
         }
 
+        // Do not count rentals not from today
         if (!rental.timestamp || !isToday(rental.timestamp)) continue;
 
         rentedCount++;
 
+        // Inject rental into slotMap if slot ID is known
         slotMap.set(rental.slot_id, {
           slot_id: rental.slot_id,
           battery_id: rental.battery_id,
