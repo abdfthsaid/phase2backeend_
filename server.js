@@ -10,8 +10,6 @@ import { v4 as uuidv4 } from "uuid";
 // 🔗 Route imports
 import stationRoutes from "./routes/stationRoutes.js";
 import rentalRoutes from "./routes/rentalRoutes.js";
-import batteryRoutes from "./routes/bettery.js";
-
 import statsRoutes from "./routes/statsRoutes.js";
 import updateStationStats from "./jobs/station_stats.js";
 import customerRoutes from "./routes/customers.js";
@@ -208,7 +206,6 @@ app.use("/api/users", userRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/charts", chartsRoute);
 app.use("/api/chartsAll", chartsAll);
-app.use("/api/battery", batteryRoutes);
 
 // 🔁 : Auto update station stats every 5 minutes
 setInterval(() => {

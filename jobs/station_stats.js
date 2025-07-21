@@ -17,12 +17,6 @@ const stations = [
 
 const stationCache = {};
 
-function isToday(timestamp) {
-  const now = new Date();
-  const date = timestamp.toDate();
-  return now.toDateString() === date.toDateString();
-}
-
 export async function updateStationStats() {
   const now = Timestamp.now();
 
@@ -97,8 +91,6 @@ export async function updateStationStats() {
 
       let rentedCount = 0;
       const presentBatteryIds = new Set(rawBatteries.map((b) => b.battery_id));
-
-      // Check which rented batteries are missing from HeyCharge
       const missingBatteryIds = [];
 
       for (const doc of rentalSnapshot.docs) {
@@ -108,13 +100,6 @@ export async function updateStationStats() {
         if (!presentBatteryIds.has(batteryId)) {
           missingBatteryIds.push(batteryId);
         }
-
-        console.log(
-          `📄 Rental doc: ${doc.id}, timestamp: ${rental.timestamp?.toDate()}`
-        );
-        console.log(
-          `📅 Is today: ${rental.timestamp && isToday(rental.timestamp)}`
-        );
 
         if (presentBatteryIds.has(batteryId)) {
           const batterySlot = Array.from(slotMap.values()).find(
@@ -129,8 +114,6 @@ export async function updateStationStats() {
             continue;
           }
         }
-
-        if (!rental.timestamp || !isToday(rental.timestamp)) continue;
 
         rentedCount++;
 
