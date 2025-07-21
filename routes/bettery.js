@@ -13,7 +13,11 @@ router.get("/missing-batteries", async (req, res) => {
       const data = doc.data();
 
       // Check if battery is missing (not returned)
-      if (!data.batteryReturned || data.batteryReturned === false || data.batteryReturned === "no") {
+      if (
+        !data.batteryReturned ||
+        data.batteryReturned === false ||
+        data.batteryReturned === "no"
+      ) {
         missingBatteries.push({
           id: doc.id,
           stationId: data.stationId || "Unknown",

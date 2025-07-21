@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from "uuid";
 // 🔗 Route imports
 import stationRoutes from "./routes/stationRoutes.js";
 import rentalRoutes from "./routes/rentalRoutes.js";
-import batteryRoutes from "./routes/battery.js";
+import batteryRoutes from "./routes/bettery.js";
 
 import statsRoutes from "./routes/statsRoutes.js";
 import updateStationStats from "./jobs/station_stats.js";
