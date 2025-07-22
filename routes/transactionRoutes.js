@@ -3,7 +3,7 @@ import db from "../config/firebase.js";
 
 const router = express.Router();
 
-// 🧾 Get last 10 rented transactions with station name & IMEI
+// 🧾 Get last 10 rented transactions with station name
 router.get("/latest", async (req, res) => {
   try {
     const snapshot = await db
@@ -13,35 +13,33 @@ router.get("/latest", async (req, res) => {
       .limit(10)
       .get();
 
-    const rentals = await Promise.all(
-      snapshot.docs.map(async (doc) => {
-        const rentalData = doc.data();
-        const stationId = rentalData.stationId;
+    const rentals = [];
 
-        let stationData = { name: null, imei: null };
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      const imei = data.imei;
 
-        if (stationId) {
-          const stationDoc = await db
-            .collection("stations")
-            .doc(stationId)
-            .get();
-          if (stationDoc.exists) {
-            const stationInfo = stationDoc.data();
-            stationData = {
-              name: stationInfo.name || null,
-              imei: stationInfo.imei || null,
-            };
-          }
+      let stationName = null;
+
+      if (imei) {
+        // Find station where imei matches
+        const stationQuery = await db
+          .collection("stations")
+          .where("imei", "==", imei)
+          .limit(1)
+          .get();
+
+        if (!stationQuery.empty) {
+          stationName = stationQuery.docs[0].data().stationName || null;
         }
+      }
 
-        return {
-          id: doc.id,
-          ...rentalData,
-          stationName: stationData.name,
-          stationIMEI: stationData.imei,
-        };
-      })
-    );
+      rentals.push({
+        id: doc.id,
+        ...data,
+        stationName, // ✅ Add stationName to response
+      });
+    }
 
     res.json(rentals);
   } catch (error) {
