@@ -32,9 +32,10 @@ export async function updateStationStats() {
       const heyStatus = data.station_status || "Online";
       const station_status = heyStatus === "Offline" ? "Offline" : "Online";
 
-      console.log(`🛰️ ${imei} HeyCharge says: ${heyStatus}`);
+      console.log(`🛰️ ${imei} HeyCharge: ${heyStatus}`);
       console.log(`📦 Batteries from HeyCharge: ${rawBatteries.length}`);
 
+      // Load station meta info (cached)
       let stationData = stationCache[imei];
       if (!stationData) {
         const doc = await db.collection("stations").doc(imei).get();
@@ -42,29 +43,31 @@ export async function updateStationStats() {
         stationCache[imei] = stationData;
       }
 
+      // If offline, update Firestore and skip processing
       if (station_status === "Offline") {
-        await db
-          .collection("station_stats")
-          .doc(imei)
-          .set({
-            id: imei,
-            stationCode: imei,
-            imei,
-            name: stationData.name || "",
-            location: stationData.location || "",
-            iccid: stationData.iccid || "",
-            station_status,
-            totalSlots: 0,
-            availableCount: 0,
-            rentedCount: 0,
-            timestamp: now,
-            batteries: [],
-            message: "❌ Station marked offline by HeyCharge",
-          });
-        console.warn(`⚠️ Station ${imei} is Offline by HeyCharge`);
+        await db.collection("station_stats").doc(imei).set({
+          id: imei,
+          stationCode: imei,
+          imei,
+          name: stationData.name || "",
+          location: stationData.location || "",
+          iccid: stationData.iccid || "",
+          station_status,
+          totalSlots: 0,
+          availableCount: 0,
+          rentedCount: 0,
+          timestamp: now,
+          batteries: [],
+          message: "❌ Station marked offline by HeyCharge",
+        });
+        console.warn(`⚠️ Station ${imei} is Offline`);
         continue;
       }
 
+      // Create a Set of battery IDs physically present in HeyCharge for quick lookup
+      const presentBatteryIds = new Set(rawBatteries.map((b) => b.battery_id));
+
+      // Build initial slot map from HeyCharge data
       const slotMap = new Map();
       for (const battery of rawBatteries) {
         slotMap.set(battery.slot_id, {
@@ -79,96 +82,83 @@ export async function updateStationStats() {
         });
       }
 
+      // Fetch rentals marked as rented in Firestore for this station
       const rentalSnapshot = await db
         .collection("rentals")
         .where("imei", "==", imei)
         .where("status", "==", "rented")
         .get();
 
-      console.log(
-        `📄 Rentals from Firestore (status='rented'): ${rentalSnapshot.size}`
-      );
+      console.log(`📄 Rentals from Firestore (status='rented'): ${rentalSnapshot.size}`);
 
       let rentedCount = 0;
-      const presentBatteryIds = new Set(rawBatteries.map((b) => b.battery_id));
+      const autoReturned = [];
       const missingBatteryIds = [];
 
+      // Check each rented battery against HeyCharge physical presence
       for (const doc of rentalSnapshot.docs) {
         const rental = doc.data();
         const batteryId = rental.battery_id;
 
-        if (!presentBatteryIds.has(batteryId)) {
-          missingBatteryIds.push(batteryId);
-        }
-
         if (presentBatteryIds.has(batteryId)) {
-          const batterySlot = Array.from(slotMap.values()).find(
-            (slot) => slot.battery_id === batteryId
-          );
-          const isActuallyAvailable =
-            batterySlot && batterySlot.status === "Online";
+          // Battery physically back in HeyCharge → auto-return in Firestore
+          await doc.ref.update({ status: "returned", returnedAt: now });
+          autoReturned.push(batteryId);
+          console.log(`↩️ Auto-returned: ${batteryId}`);
+        } else {
+          // Battery not physically in HeyCharge → still rented
+          rentedCount++;
+          missingBatteryIds.push(batteryId);
 
-          if (isActuallyAvailable) {
-            await doc.ref.update({ status: "returned", returnedAt: now });
-            console.log(`↩️ Auto-returned ${batteryId}`);
-            continue;
-          }
+          // Add/update rented battery in slot map with rental info
+          slotMap.set(rental.slot_id, {
+            slot_id: rental.slot_id,
+            battery_id: batteryId,
+            level: null,
+            status: "Rented",
+            rented: true,
+            phoneNumber: rental.phoneNumber,
+            rentedAt: rental.timestamp,
+            amount: rental.amount || 0,
+          });
         }
-
-        rentedCount++;
-
-        slotMap.set(rental.slot_id, {
-          slot_id: rental.slot_id,
-          battery_id: batteryId,
-          level: null,
-          status: "Rented",
-          rented: true,
-          phoneNumber: rental.phoneNumber,
-          rentedAt: rental.timestamp,
-          amount: rental.amount || 0,
-        });
       }
 
-      if (missingBatteryIds.length > 0) {
-        console.warn(
-          `❗ Missing batteries (rented but not in HeyCharge): ${missingBatteryIds.length}`
-        );
-        console.warn(`⚠️ IDs:`, missingBatteryIds);
-      }
+      if (missingBatteryIds.length)
+        console.warn(`❗ Missing batteries (rented but not in HeyCharge):`, missingBatteryIds);
+      if (autoReturned.length)
+        console.log(`✅ Auto-returned:`, autoReturned);
 
+      // Sort slots by slot_id numeric order for consistency
       const slotTemplate = Array.from(slotMap.values()).sort(
         (a, b) => parseInt(a.slot_id) - parseInt(b.slot_id)
       );
 
       const totalSlots = slotTemplate.length;
-      const availableCount = slotTemplate.filter(
-        (s) => s.status === "Online"
-      ).length;
+      const availableCount = slotTemplate.filter((s) => s.status === "Online").length;
 
-      await db
-        .collection("station_stats")
-        .doc(imei)
-        .set({
-          id: imei,
-          stationCode: imei,
-          imei,
-          name: stationData.name || "",
-          location: stationData.location || "",
-          iccid: stationData.iccid || "",
-          station_status,
-          totalSlots,
-          availableCount,
-          rentedCount,
-          timestamp: now,
-          batteries: slotTemplate,
-          ...(availableCount === 0 && {
-            message: "❌ No available battery ≥ 60%",
-          }),
-        });
+      // Update Firestore station_stats document with current snapshot
+      await db.collection("station_stats").doc(imei).set({
+        id: imei,
+        stationCode: imei,
+        imei,
+        name: stationData.name || "",
+        location: stationData.location || "",
+        iccid: stationData.iccid || "",
+        station_status,
+        totalSlots,
+        availableCount,
+        rentedCount,
+        timestamp: now,
+        batteries: slotTemplate,
+        ...(availableCount === 0 && {
+          message: "❌ No available battery ≥ 60%",
+        }),
+      });
 
-      console.log(`✅ Updated stats for station ${imei}`);
+      console.log(`✅ Updated station ${imei}`);
     } catch (err) {
-      console.error(`❌ Failed to fetch station ${imei}:`, err.message);
+      console.error(`❌ Failed station ${imei}:`, err.message);
 
       let stationData = stationCache[imei];
       if (!stationData) {
@@ -177,24 +167,21 @@ export async function updateStationStats() {
         stationCache[imei] = stationData;
       }
 
-      await db
-        .collection("station_stats")
-        .doc(imei)
-        .set({
-          id: imei,
-          stationCode: imei,
-          imei,
-          name: stationData.name || "",
-          location: stationData.location || "",
-          iccid: stationData.iccid || "",
-          station_status: "Offline",
-          totalSlots: 0,
-          availableCount: 0,
-          rentedCount: 0,
-          timestamp: now,
-          batteries: [],
-          message: "❌ Failed to fetch station info",
-        });
+      await db.collection("station_stats").doc(imei).set({
+        id: imei,
+        stationCode: imei,
+        imei,
+        name: stationData.name || "",
+        location: stationData.location || "",
+        iccid: stationData.iccid || "",
+        station_status: "Offline",
+        totalSlots: 0,
+        availableCount: 0,
+        rentedCount: 0,
+        timestamp: Timestamp.now(),
+        batteries: [],
+        message: "❌ Failed to fetch station info",
+      });
 
       console.warn(`⚠️ Station ${imei} marked Offline due to error.`);
     }
