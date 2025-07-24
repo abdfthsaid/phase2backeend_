@@ -190,30 +190,18 @@ const { HEYCHARGE_API_KEY, HEYCHARGE_DOMAIN } = process.env;
 //     res.status(500).json({ error: "Failed to fetch all station stats" });
 //   }
 // });
+
+// GET all station stats
 router.get("/stats", async (req, res) => {
   try {
     const snap = await db.collection("station_stats").get();
     const stations = [];
-
-    for (const doc of snap.docs) {
+    snap.forEach((doc) => {
       const stat = doc.data();
-
-      // Enrich with station metadata
-      const metaDoc = await db
-        .collection("stations")
-        .doc(stat.stationCode)
-        .get();
-      const meta = metaDoc.exists ? metaDoc.data() : {};
-
-      stations.push({
-        ...stat,
-        name: meta.name || "",
-        location: meta.location || "",
-        iccid: meta.iccid || "",
-      });
-    }
-
-    res.status(200).json({ stations });
+      // Merge any live metadata if desired
+      stations.push(stat);
+    });
+    res.json({ stations });
   } catch (err) {
     console.error("Get All Station Stats Error:", err.message);
     res.status(500).json({ error: "Failed to fetch all station stats" });

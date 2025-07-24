@@ -128,9 +128,12 @@ export async function updateStationStats() {
           console.log(`↩️ Auto-returned ${r.battery_id}`);
         } else {
           rentedCount++;
-          // Overdue logic
+          // Overdue logic: $0.5 → >2h, $1 → >12h
           const diffH = (nowDate - r.timestamp.toDate()) / 36e5;
-          if ((r.amount === 0.5 && diffH > 2) || (r.amount === 1 && diffH > 3)) {
+          if (
+            (r.amount === 0.5 && diffH > 2) ||
+            (r.amount === 1 && diffH > 12)
+          ) {
             overdueCount++;
           }
           // Overlay rental
@@ -151,7 +154,7 @@ export async function updateStationStats() {
       const slots = Array.from(slotMap.values()).sort(
         (a, b) => parseInt(a.slot_id) - parseInt(b.slot_id)
       );
-      const totalSlots = slots.length; // equals MACHINE_CAPACITY
+      const totalSlots = slots.length; // always MACHINE_CAPACITY
       const availableCount = slots.filter((s) => s.status === "Online").length;
 
       // 10. Write consolidated stats
