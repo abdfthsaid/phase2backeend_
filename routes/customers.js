@@ -4,110 +4,94 @@ import { Timestamp } from "firebase-admin/firestore";
 
 const router = express.Router();
 
-// GET: Daily customer count
+// 📆 GET: Daily customer count (computed live)
+// Returns number of distinct customers (phoneNumber) who rented today
+tooltip:
 router.get("/daily/:stationCode", async (req, res) => {
   const { stationCode } = req.params;
-  const now = new Date();
-  const dateStr = now.toISOString().split("T")[0]; // YYYY-MM-DD
-  const docId = `${stationCode}_${dateStr}`;
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
 
   try {
-    const doc = await db.collection("daily_customer_stats").doc(docId).get();
+    const snapshot = await db.collection("rentals")
+      .where("stationCode", "==", stationCode)
+      .where("timestamp", ">=", Timestamp.fromDate(start))
+      .where("timestamp", "<", Timestamp.fromDate(end))
+      .get();
 
-    if (!doc.exists) {
-      return res.json({ stationCode, date: dateStr, count: 0 });
-    }
-
-    const data = doc.data();
-    res.json({ stationCode, date: dateStr, count: data.count || 0 });
+    // count unique phone numbers
+    const phones = new Set(snapshot.docs.map(doc => doc.data().phoneNumber));
+    res.json({ stationCode, date: start.toISOString().split("T")[0], count: phones.size });
   } catch (err) {
-    console.error("Error fetching daily customer:", err);
+    console.error("Error fetching daily customer count:", err);
     res.status(500).json({ error: "Failed to fetch daily customer count" });
   }
 });
 
+// 📅 GET: Monthly customer count (computed live)
 router.get("/monthly/:stationCode", async (req, res) => {
   const { stationCode } = req.params;
-
   const now = new Date();
-  const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
-    2,
-    "0"
-  )}`;
-  const monthlyDocId = `${stationCode}_${yearMonth}`;
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(start);
+  end.setMonth(end.getMonth() + 1);
 
   try {
-    const doc = await db
-      .collection("monthly_customer_stats")
-      .doc(monthlyDocId)
+    const snapshot = await db.collection("rentals")
+      .where("stationCode", "==", stationCode)
+      .where("timestamp", ">=", Timestamp.fromDate(start))
+      .where("timestamp", "<", Timestamp.fromDate(end))
       .get();
 
-    res.status(200).json({
-      imei: stationCode,
-      month: yearMonth,
-      count: doc.exists ? doc.data().count : 0,
-    });
+    const phones = new Set(snapshot.docs.map(doc => doc.data().phoneNumber));
+    res.json({ stationCode, month: `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`, count: phones.size });
   } catch (err) {
-    console.error("Monthly customer fetch error:", err);
-    res.status(500).json({ error: "Failed to get monthly customer stats" });
+    console.error("Error fetching monthly customer count:", err);
+    res.status(500).json({ error: "Failed to fetch monthly customer count" });
   }
 });
 
-// 📊 GET: Total Daily Customers (All Stations)
-router.get("/daily-total", async (req, res) => {
-  const today = new Date().toISOString().split("T")[0]; // e.g. "2025-07-11"
+// 🏢 GET: Total daily customers across all stations
+router.get("/daily-total", async (_req, res) => {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
 
   try {
-    const snapshot = await db
-      .collection("daily_customer_stats")
-      .where("date", "==", today)
+    const snapshot = await db.collection("rentals")
+      .where("timestamp", ">=", Timestamp.fromDate(start))
+      .where("timestamp", "<", Timestamp.fromDate(end))
       .get();
 
-    let total = 0;
-
-    snapshot.forEach((doc) => {
-      total += doc.data().count || 0;
-    });
-
-    res.json({
-      date: today,
-      totalCustomersToday: total,
-      stations: snapshot.size,
-    });
-  } catch (error) {
-    console.error("❌ Failed to fetch daily totals:", error);
-    res.status(500).json({ error: "Failed to fetch daily totals ❌" });
+    const phones = new Set(snapshot.docs.map(doc => doc.data().phoneNumber));
+    res.json({ date: start.toISOString().split("T")[0], totalCustomersToday: phones.size });
+  } catch (err) {
+    console.error("Error fetching total daily customers:", err);
+    res.status(500).json({ error: "Failed to fetch total daily customers" });
   }
 });
 
-// 📊 GET: Total Monthly Customers (All Stations)
-router.get("/monthly-total", async (req, res) => {
+// 🏢 GET: Total monthly customers across all stations
+router.get("/monthly-total", async (_req, res) => {
   const now = new Date();
-  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
-    2,
-    "0"
-  )}`;
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(start);
+  end.setMonth(end.getMonth() + 1);
 
   try {
-    const snapshot = await db
-      .collection("monthly_customer_stats")
-      .where("month", "==", monthKey)
+    const snapshot = await db.collection("rentals")
+      .where("timestamp", ">=", Timestamp.fromDate(start))
+      .where("timestamp", "<", Timestamp.fromDate(end))
       .get();
 
-    let total = 0;
-
-    snapshot.forEach((doc) => {
-      total += doc.data().count || 0;
-    });
-
-    res.json({
-      month: monthKey,
-      totalCustomersThisMonth: total,
-      stations: snapshot.size,
-    });
-  } catch (error) {
-    console.error("❌ Failed to fetch monthly totals:", error);
-    res.status(500).json({ error: "Failed to fetch monthly totals ❌" });
+    const phones = new Set(snapshot.docs.map(doc => doc.data().phoneNumber));
+    res.json({ month: `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`, totalCustomersThisMonth: phones.size });
+  } catch (err) {
+    console.error("Error fetching total monthly customers:", err);
+    res.status(500).json({ error: "Failed to fetch total monthly customers" });
   }
 });
 
