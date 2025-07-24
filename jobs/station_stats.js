@@ -8,6 +8,8 @@ dotenv.config();
 
 const { HEYCHARGE_API_KEY, HEYCHARGE_DOMAIN } = process.env;
 
+// Machine capacity (slots per station)
+const MACHINE_CAPACITY = 8;
 // List of station IMEIs to track
 const stations = [
   "WSEP161721195358",
@@ -76,8 +78,23 @@ export async function updateStationStats() {
       // 4. Prepare lookup of present batteries
       const presentIds = new Set(rawBatteries.map((b) => b.battery_id));
 
-      // 5. Build slot map from HeyCharge data
+      // 5. Build initial slot map with empty entries
       const slotMap = new Map();
+      for (let slot = 1; slot <= MACHINE_CAPACITY; slot++) {
+        const id = String(slot);
+        slotMap.set(id, {
+          slot_id: id,
+          battery_id: null,
+          level: null,
+          status: "Empty",
+          rented: false,
+          phoneNumber: "",
+          rentedAt: null,
+          amount: 0,
+        });
+      }
+
+      // 6. Overlay HeyCharge data
       rawBatteries.forEach((b) => {
         slotMap.set(b.slot_id, {
           slot_id: b.slot_id,
@@ -91,7 +108,7 @@ export async function updateStationStats() {
         });
       });
 
-      // 6. Fetch ongoing rentals
+      // 7. Fetch ongoing rentals
       const rentalsSnap = await db
         .collection("rentals")
         .where("imei", "==", imei)
@@ -102,25 +119,21 @@ export async function updateStationStats() {
       let overdueCount = 0;
       const nowDate = now.toDate();
 
-      // 7. Merge rental data
+      // 8. Merge rental data
       rentalsSnap.forEach((doc) => {
         const r = doc.data();
-        // Auto-return if physically present
         if (presentIds.has(r.battery_id)) {
+          // Auto-return
           doc.ref.update({ status: "returned", returnedAt: now });
           console.log(`↩️ Auto-returned ${r.battery_id}`);
         } else {
-          // Still rented
           rentedCount++;
-          // Overdue logic: 0.5℅ for >2h, 1℅ for >3h
+          // Overdue logic
           const diffH = (nowDate - r.timestamp.toDate()) / 36e5;
-          if (
-            (r.amount === 0.5 && diffH > 2) ||
-            (r.amount === 1 && diffH > 3)
-          ) {
+          if ((r.amount === 0.5 && diffH > 2) || (r.amount === 1 && diffH > 3)) {
             overdueCount++;
           }
-          // Add to slot map
+          // Overlay rental
           slotMap.set(r.slot_id, {
             slot_id: r.slot_id,
             battery_id: r.battery_id,
@@ -134,15 +147,14 @@ export async function updateStationStats() {
         }
       });
 
-      // 8. Finalize slot list and counts
-      const slots = Array.from(slotMap.values())
-        .sort((a, b) => parseInt(a.slot_id) - parseInt(b.slot_id))
-        .slice(0, 8);
-
-      const totalSlots = slots.length;
+      // 9. Finalize slots and counts
+      const slots = Array.from(slotMap.values()).sort(
+        (a, b) => parseInt(a.slot_id) - parseInt(b.slot_id)
+      );
+      const totalSlots = slots.length; // equals MACHINE_CAPACITY
       const availableCount = slots.filter((s) => s.status === "Online").length;
 
-      // 9. Write consolidated stats
+      // 10. Write consolidated stats
       await db
         .collection("station_stats")
         .doc(imei)
@@ -162,11 +174,13 @@ export async function updateStationStats() {
           batteries: slots,
         });
 
-      console.log(`✅ Updated stats for station ${imei}`);
+      console.log(
+        `✅ Updated ${imei}: total=${totalSlots} avail=${availableCount} rented=${rentedCount} overdue=${overdueCount}`
+      );
     } catch (err) {
       console.error(`❌ Error for station ${imei}:`, err.message);
-      // On error mark offline
-      const metaErr = stationCache[imei] || {};
+      // On error, mark offline
+      const errMeta = stationCache[imei] || {};
       await db
         .collection("station_stats")
         .doc(imei)
@@ -174,9 +188,9 @@ export async function updateStationStats() {
           id: imei,
           stationCode: imei,
           imei,
-          name: metaErr.name || "",
-          location: metaErr.location || "",
-          iccid: metaErr.iccid || "",
+          name: errMeta.name || "",
+          location: errMeta.location || "",
+          iccid: errMeta.iccid || "",
           station_status: "Offline",
           totalSlots: 0,
           availableCount: 0,
