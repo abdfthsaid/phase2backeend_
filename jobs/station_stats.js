@@ -1,4 +1,4 @@
-// 📦 updateStationStats.js
+// 📦 jobs/updateStationStats.js
 import db from "../config/firebase.js";
 import axios from "axios";
 import dotenv from "dotenv";
@@ -8,6 +8,7 @@ dotenv.config();
 
 const { HEYCHARGE_API_KEY, HEYCHARGE_DOMAIN } = process.env;
 
+// List of station IMEIs to track
 const stations = [
   "WSEP161721195358",
   "WSEP161741066504",
@@ -16,31 +17,40 @@ const stations = [
   "WSEP161741066503",
 ];
 
+// Cache station metadata to reduce reads
 const stationCache = {};
 
+/**
+ * Fetches station status from HeyCharge, merges with rental info,
+ * computes counts (totalSlots, availableCount, rentedCount, overdueCount),
+ * and writes a consolidated snapshot to Firestore.
+ */
 export async function updateStationStats() {
   const now = Timestamp.now();
 
   for (const imei of stations) {
     try {
+      // 1. Fetch live station data from HeyCharge
       const url = `${HEYCHARGE_DOMAIN}/v1/station/${imei}`;
-      const response = await axios.get(url, {
+      const { data } = await axios.get(url, {
         auth: { username: HEYCHARGE_API_KEY, password: "" },
       });
 
-      const data = response.data;
       const rawBatteries = data.batteries || [];
       const station_status =
         data.station_status === "Offline" ? "Offline" : "Online";
 
-      let stationData = stationCache[imei];
-      if (!stationData) {
+      // 2. Load station metadata (name, location, iccid)
+      let meta = stationCache[imei];
+      if (!meta) {
         const doc = await db.collection("stations").doc(imei).get();
-        stationData = doc.exists ? doc.data() : {};
-        stationCache[imei] = stationData;
+        meta = doc.exists ? doc.data() : {};
+        stationCache[imei] = meta;
       }
 
+      // 3. If offline, write offline snapshot and continue
       if (station_status === "Offline") {
+        console.log(`⚠️ Station ${imei} is offline`);
         await db
           .collection("station_stats")
           .doc(imei)
@@ -48,77 +58,90 @@ export async function updateStationStats() {
             id: imei,
             stationCode: imei,
             imei,
-            name: stationData.name || "",
-            location: stationData.location || "",
-            iccid: stationData.iccid || "",
+            name: meta.name || "",
+            location: meta.location || "",
+            iccid: meta.iccid || "",
             station_status,
             totalSlots: 0,
             availableCount: 0,
             rentedCount: 0,
+            overdueCount: 0,
             timestamp: now,
             batteries: [],
-            message: "❌ Station marked offline by HeyCharge",
+            message: "❌ Station offline",
           });
         continue;
       }
 
-      const presentBatteryIds = new Set(rawBatteries.map((b) => b.battery_id));
-      const slotMap = new Map();
+      // 4. Prepare lookup of present batteries
+      const presentIds = new Set(rawBatteries.map((b) => b.battery_id));
 
-      // Raw batteries from station
-      for (const battery of rawBatteries) {
-        slotMap.set(battery.slot_id, {
-          slot_id: battery.slot_id,
-          battery_id: battery.battery_id,
-          level: parseInt(battery.battery_capacity),
-          status: battery.lock_status === "1" ? "Online" : "Offline",
+      // 5. Build slot map from HeyCharge data
+      const slotMap = new Map();
+      rawBatteries.forEach((b) => {
+        slotMap.set(b.slot_id, {
+          slot_id: b.slot_id,
+          battery_id: b.battery_id,
+          level: parseInt(b.battery_capacity) || null,
+          status: b.lock_status === "1" ? "Online" : "Offline",
           rented: false,
           phoneNumber: "",
           rentedAt: null,
           amount: 0,
         });
-      }
+      });
 
-      const rentalSnapshot = await db
+      // 6. Fetch ongoing rentals
+      const rentalsSnap = await db
         .collection("rentals")
         .where("imei", "==", imei)
         .where("status", "==", "rented")
         .get();
 
       let rentedCount = 0;
+      let overdueCount = 0;
+      const nowDate = now.toDate();
 
-      for (const doc of rentalSnapshot.docs) {
-        const rental = doc.data();
-        const batteryId = rental.battery_id;
-
-        // If rental battery is physically returned
-        if (presentBatteryIds.has(batteryId)) {
-          await doc.ref.update({ status: "returned", returnedAt: now });
+      // 7. Merge rental data
+      rentalsSnap.forEach((doc) => {
+        const r = doc.data();
+        // Auto-return if physically present
+        if (presentIds.has(r.battery_id)) {
+          doc.ref.update({ status: "returned", returnedAt: now });
+          console.log(`↩️ Auto-returned ${r.battery_id}`);
         } else {
+          // Still rented
           rentedCount++;
-          slotMap.set(rental.slot_id, {
-            slot_id: rental.slot_id,
-            battery_id: batteryId,
+          // Overdue logic: 0.5℅ for >2h, 1℅ for >3h
+          const diffH = (nowDate - r.timestamp.toDate()) / 36e5;
+          if (
+            (r.amount === 0.5 && diffH > 2) ||
+            (r.amount === 1 && diffH > 3)
+          ) {
+            overdueCount++;
+          }
+          // Add to slot map
+          slotMap.set(r.slot_id, {
+            slot_id: r.slot_id,
+            battery_id: r.battery_id,
             level: null,
             status: "Rented",
             rented: true,
-            phoneNumber: rental.phoneNumber,
-            rentedAt: rental.timestamp,
-            amount: rental.amount || 0,
+            phoneNumber: r.phoneNumber,
+            rentedAt: r.timestamp,
+            amount: r.amount,
           });
         }
-      }
+      });
 
-      // Safety: trim to max 8 slots
-      const slotTemplate = Array.from(slotMap.values())
-        .sort((a, b) => parseInt(a.slot_id) - parseInt(b.slot_id))
-        .slice(0, 8);
+      // 8. Finalize slot list and counts
+      const slots = Array.from(slotMap.values()).sort(
+        (a, b) => parseInt(a.slot_id) - parseInt(b.slot_id)
+      );
+      const totalSlots = slots.length;
+      const availableCount = slots.filter((s) => s.status === "Online").length;
 
-      const totalSlots = slotTemplate.length;
-      const availableCount = slotTemplate.filter(
-        (s) => s.status === "Online"
-      ).length;
-
+      // 9. Write consolidated stats
       await db
         .collection("station_stats")
         .doc(imei)
@@ -126,24 +149,22 @@ export async function updateStationStats() {
           id: imei,
           stationCode: imei,
           imei,
-          name: stationData.name || "",
-          location: stationData.location || "",
-          iccid: stationData.iccid || "",
+          name: meta.name || "",
+          location: meta.location || "",
+          iccid: meta.iccid || "",
           station_status,
           totalSlots,
           availableCount,
           rentedCount,
+          overdueCount,
           timestamp: now,
-          batteries: slotTemplate,
-          ...(availableCount === 0 && {
-            message: "❌ No available battery ≥ 60%",
-          }),
+          batteries: slots.slice(0, 8),
         });
+      console.log(`✅ Updated stats for station ${imei}`);
     } catch (err) {
-      let stationData = stationCache[imei] || {};
-      const doc = await db.collection("stations").doc(imei).get();
-      if (doc.exists) stationData = doc.data();
-
+      console.error(`❌ Error for station ${imei}:`, err.message);
+      // On error mark offline
+      const meta = stationCache[imei] || {};
       await db
         .collection("station_stats")
         .doc(imei)
@@ -151,14 +172,15 @@ export async function updateStationStats() {
           id: imei,
           stationCode: imei,
           imei,
-          name: stationData.name || "",
-          location: stationData.location || "",
-          iccid: stationData.iccid || "",
+          name: meta.name || "",
+          location: meta.location || "",
+          iccid: meta.iccid || "",
           station_status: "Offline",
           totalSlots: 0,
           availableCount: 0,
           rentedCount: 0,
-          timestamp: now,
+          overdueCount: 0,
+          timestamp: Timestamp.now(),
           batteries: [],
           message: "❌ Failed to fetch station info",
         });
