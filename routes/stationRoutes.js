@@ -193,7 +193,25 @@ const { HEYCHARGE_API_KEY, HEYCHARGE_DOMAIN } = process.env;
 router.get("/stats", async (req, res) => {
   try {
     const snap = await db.collection("station_stats").get();
-    const stations = snap.docs.map((doc) => doc.data());
+    const stations = [];
+
+    for (const doc of snap.docs) {
+      const stat = doc.data();
+
+      // Enrich with station metadata
+      const metaDoc = await db
+        .collection("stations")
+        .doc(stat.stationCode)
+        .get();
+      const meta = metaDoc.exists ? metaDoc.data() : {};
+
+      stations.push({
+        ...stat,
+        name: meta.name || "",
+        location: meta.location || "",
+        iccid: meta.iccid || "",
+      });
+    }
 
     res.status(200).json({ stations });
   } catch (err) {

@@ -135,9 +135,10 @@ export async function updateStationStats() {
       });
 
       // 8. Finalize slot list and counts
-      const slots = Array.from(slotMap.values()).sort(
-        (a, b) => parseInt(a.slot_id) - parseInt(b.slot_id)
-      );
+      const slots = Array.from(slotMap.values())
+        .sort((a, b) => parseInt(a.slot_id) - parseInt(b.slot_id))
+        .slice(0, 8);
+
       const totalSlots = slots.length;
       const availableCount = slots.filter((s) => s.status === "Online").length;
 
@@ -158,13 +159,14 @@ export async function updateStationStats() {
           rentedCount,
           overdueCount,
           timestamp: now,
-          batteries: slots.slice(0, 8),
+          batteries: slots,
         });
+
       console.log(`✅ Updated stats for station ${imei}`);
     } catch (err) {
       console.error(`❌ Error for station ${imei}:`, err.message);
       // On error mark offline
-      const meta = stationCache[imei] || {};
+      const metaErr = stationCache[imei] || {};
       await db
         .collection("station_stats")
         .doc(imei)
@@ -172,9 +174,9 @@ export async function updateStationStats() {
           id: imei,
           stationCode: imei,
           imei,
-          name: meta.name || "",
-          location: meta.location || "",
-          iccid: meta.iccid || "",
+          name: metaErr.name || "",
+          location: metaErr.location || "",
+          iccid: metaErr.iccid || "",
           station_status: "Offline",
           totalSlots: 0,
           availableCount: 0,
