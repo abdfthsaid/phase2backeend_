@@ -162,27 +162,38 @@ const { HEYCHARGE_API_KEY, HEYCHARGE_DOMAIN } = process.env;
 
 // GET all stations with full data
 // GET /api/stations/stats
+// router.get("/stats", async (req, res) => {
+//   try {
+//     const snap = await db.collection("station_stats").get();
+//     const stations = [];
+
+//     for (const doc of snap.docs) {
+//       const stat = doc.data();
+
+//       const stationDoc = await db
+//         .collection("stations")
+//         .doc(stat.stationCode)
+//         .get();
+//       const meta = stationDoc.exists ? stationDoc.data() : {};
+
+//       stations.push({
+//         ...stat,
+//         name: meta.name || "",
+//         location: meta.location || "",
+//         iccid: meta.iccid || "",
+//       });
+//     }
+
+//     res.status(200).json({ stations });
+//   } catch (err) {
+//     console.error("Get All Station Stats Error:", err.message);
+//     res.status(500).json({ error: "Failed to fetch all station stats" });
+//   }
+// });
 router.get("/stats", async (req, res) => {
   try {
     const snap = await db.collection("station_stats").get();
-    const stations = [];
-
-    for (const doc of snap.docs) {
-      const stat = doc.data();
-
-      const stationDoc = await db
-        .collection("stations")
-        .doc(stat.stationCode)
-        .get();
-      const meta = stationDoc.exists ? stationDoc.data() : {};
-
-      stations.push({
-        ...stat,
-        name: meta.name || "",
-        location: meta.location || "",
-        iccid: meta.iccid || "",
-      });
-    }
+    const stations = snap.docs.map((doc) => doc.data());
 
     res.status(200).json({ stations });
   } catch (err) {
@@ -215,90 +226,6 @@ router.get("/basic", async (req, res) => {
   } catch (error) {
     console.error("❌ Error fetching basic station info:", error.message);
     res.status(500).json({ error: "Failed to fetch station basics ❌" });
-  }
-});
-
-// 📡 GET /api/stations/:stationCode
-
-const stationImeisByCode = {
-  "58": "WSEP161721195358",
-  "04": "WSEP161741066504",
-  "05": "WSEP161741066505",
-  "02": "WSEP161741066502",
-  "03": "WSEP161741066503",
-};
-
-router.get("/api/stations/:stationCode", async (req, res) => {
-  const { stationCode } = req.params;
-  const imei = stationImeisByCode[stationCode];
-
-  if (!imei) return res.status(404).json({ error: "Invalid station code" });
-
-  try {
-    const heyRes = await axios.get(
-      `${process.env.HEYCHARGE_DOMAIN}/station/status?imei=${imei}`,
-      { headers: { "x-api-key": process.env.HEYCHARGE_API_KEY } }
-    );
-
-    const heyBatteries = heyRes.data?.batteries || [];
-    const physicalBatteryIds = heyBatteries.map((b) => b.battery_id);
-
-    const rentalsSnap = await db
-      .collection("rentals")
-      .where("stationCode", "==", stationCode)
-      .where("status", "==", "rented")
-      .get();
-
-    const validRented = [];
-    let conflictCount = 0;
-
-    for (const doc of rentalsSnap.docs) {
-      const data = doc.data();
-
-      if (physicalBatteryIds.includes(data.battery_id)) {
-        conflictCount++;
-
-        await db.collection("rentals").doc(doc.id).update({
-          status: "returned",
-          returnedAt: Timestamp.now(),
-        });
-      } else {
-        validRented.push({
-          battery_id: data.battery_id,
-          slot_id: data.slot_id,
-          phoneNumber: data.phoneNumber,
-          status: "Rented",
-          level: null,
-        });
-      }
-    }
-
-    const merged = [...heyBatteries, ...validRented];
-
-    if (merged.length > 8) {
-      return res.status(400).json({
-        error: "❌ Total batteries (physical + rented) exceed 8!",
-        details: {
-          stationCode,
-          total: merged.length,
-          physicalCount: heyBatteries.length,
-          rentedCount: validRented.length,
-        },
-        conflictCount,
-      });
-    }
-
-    return res.json({
-      stationCode,
-      imei,
-      physicalCount: heyBatteries.length,
-      rentedCount: validRented.length,
-      totalCount: merged.length,
-      conflictCount,
-      batteries: merged,
-    });
-  } catch (err) {
-    return res.status(500).json({ error: "Station fetch failed" });
   }
 });
 

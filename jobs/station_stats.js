@@ -30,8 +30,8 @@ export async function updateStationStats() {
 
       const data = response.data;
       const rawBatteries = data.batteries || [];
-      const heyStatus = data.station_status || "Online";
-      const station_status = heyStatus === "Offline" ? "Offline" : "Online";
+      const station_status =
+        data.station_status === "Offline" ? "Offline" : "Online";
 
       let stationData = stationCache[imei];
       if (!stationData) {
@@ -63,8 +63,9 @@ export async function updateStationStats() {
       }
 
       const presentBatteryIds = new Set(rawBatteries.map((b) => b.battery_id));
-
       const slotMap = new Map();
+
+      // Raw batteries from station
       for (const battery of rawBatteries) {
         slotMap.set(battery.slot_id, {
           slot_id: battery.slot_id,
@@ -85,20 +86,16 @@ export async function updateStationStats() {
         .get();
 
       let rentedCount = 0;
-      const autoReturned = [];
-      const missingBatteryIds = [];
 
       for (const doc of rentalSnapshot.docs) {
         const rental = doc.data();
         const batteryId = rental.battery_id;
 
+        // If rental battery is physically returned
         if (presentBatteryIds.has(batteryId)) {
           await doc.ref.update({ status: "returned", returnedAt: now });
-          autoReturned.push(batteryId);
         } else {
           rentedCount++;
-          missingBatteryIds.push(batteryId);
-
           slotMap.set(rental.slot_id, {
             slot_id: rental.slot_id,
             battery_id: batteryId,
@@ -112,9 +109,10 @@ export async function updateStationStats() {
         }
       }
 
-      const slotTemplate = Array.from(slotMap.values()).sort(
-        (a, b) => parseInt(a.slot_id) - parseInt(b.slot_id)
-      );
+      // Safety: trim to max 8 slots
+      const slotTemplate = Array.from(slotMap.values())
+        .sort((a, b) => parseInt(a.slot_id) - parseInt(b.slot_id))
+        .slice(0, 8);
 
       const totalSlots = slotTemplate.length;
       const availableCount = slotTemplate.filter(
@@ -142,12 +140,9 @@ export async function updateStationStats() {
           }),
         });
     } catch (err) {
-      let stationData = stationCache[imei];
-      if (!stationData) {
-        const doc = await db.collection("stations").doc(imei).get();
-        stationData = doc.exists ? doc.data() : {};
-        stationCache[imei] = stationData;
-      }
+      let stationData = stationCache[imei] || {};
+      const doc = await db.collection("stations").doc(imei).get();
+      if (doc.exists) stationData = doc.data();
 
       await db
         .collection("station_stats")
@@ -163,7 +158,7 @@ export async function updateStationStats() {
           totalSlots: 0,
           availableCount: 0,
           rentedCount: 0,
-          timestamp: Timestamp.now(),
+          timestamp: now,
           batteries: [],
           message: "❌ Failed to fetch station info",
         });
