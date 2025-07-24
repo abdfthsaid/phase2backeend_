@@ -1,97 +1,146 @@
+// routes/customerRoutes.js
 import express from "express";
 import db from "../config/firebase.js";
 import { Timestamp } from "firebase-admin/firestore";
 
 const router = express.Router();
 
-// 📆 GET: Daily customer count (computed live)
-// Returns number of distinct customers (phoneNumber) who rented today
-tooltip:
-router.get("/daily/:stationCode", async (req, res) => {
-  const { stationCode } = req.params;
-  const today = new Date();
-  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+/**
+ * Helper to compute Firestore Timestamp bounds for a given Date
+ */
+function getDayBounds(date = new Date()) {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
+  return {
+    startTs: Timestamp.fromDate(start),
+    endTs:   Timestamp.fromDate(end),
+    dateStr: start.toISOString().split("T")[0],
+  };
+}
+
+function getMonthBounds(date = new Date()) {
+  const start = new Date(date.getFullYear(), date.getMonth(), 1);
+  const end   = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+  return {
+    startTs:   Timestamp.fromDate(start),
+    endTs:     Timestamp.fromDate(end),
+    monthKey:  `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,"0")}`,
+  };
+}
+
+// GET /api/customers/daily/:stationCode
+// Returns number of unique phoneNumbers in rentals for that station today
+router.get("/daily/:stationCode", async (req, res) => {
+  const { stationCode } = req.params;
+  const { startTs, endTs, dateStr } = getDayBounds();
 
   try {
-    const snapshot = await db.collection("rentals")
+    const snap = await db.collection("rentals")
       .where("stationCode", "==", stationCode)
-      .where("timestamp", ">=", Timestamp.fromDate(start))
-      .where("timestamp", "<", Timestamp.fromDate(end))
+      .where("timestamp", ">=", startTs)
+      .where("timestamp", "<", endTs)
       .get();
 
-    // count unique phone numbers
-    const phones = new Set(snapshot.docs.map(doc => doc.data().phoneNumber));
-    res.json({ stationCode, date: start.toISOString().split("T")[0], count: phones.size });
+    const phones = new Set();
+    snap.forEach(doc => {
+      const num = doc.data().phoneNumber;
+      if (num) phones.add(num);
+    });
+
+    res.json({
+      stationCode,
+      date: dateStr,
+      count: phones.size
+    });
   } catch (err) {
-    console.error("Error fetching daily customer count:", err);
+    console.error("❌ Daily customer error:", err);
     res.status(500).json({ error: "Failed to fetch daily customer count" });
   }
 });
 
-// 📅 GET: Monthly customer count (computed live)
+// GET /api/customers/monthly/:stationCode
+// Returns number of unique phoneNumbers in rentals for that station this month
 router.get("/monthly/:stationCode", async (req, res) => {
   const { stationCode } = req.params;
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const end = new Date(start);
-  end.setMonth(end.getMonth() + 1);
+  const { startTs, endTs, monthKey } = getMonthBounds();
 
   try {
-    const snapshot = await db.collection("rentals")
+    const snap = await db.collection("rentals")
       .where("stationCode", "==", stationCode)
-      .where("timestamp", ">=", Timestamp.fromDate(start))
-      .where("timestamp", "<", Timestamp.fromDate(end))
+      .where("timestamp", ">=", startTs)
+      .where("timestamp", "<", endTs)
       .get();
 
-    const phones = new Set(snapshot.docs.map(doc => doc.data().phoneNumber));
-    res.json({ stationCode, month: `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`, count: phones.size });
+    const phones = new Set();
+    snap.forEach(doc => {
+      const num = doc.data().phoneNumber;
+      if (num) phones.add(num);
+    });
+
+    res.json({
+      stationCode,
+      month: monthKey,
+      count: phones.size
+    });
   } catch (err) {
-    console.error("Error fetching monthly customer count:", err);
+    console.error("❌ Monthly customer error:", err);
     res.status(500).json({ error: "Failed to fetch monthly customer count" });
   }
 });
 
-// 🏢 GET: Total daily customers across all stations
-router.get("/daily-total", async (_req, res) => {
-  const today = new Date();
-  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-
+// GET /api/customers/daily-total
+// Sum of unique customers across all stations today
+router.get("/daily-total", async (req, res) => {
+  const { startTs, endTs, dateStr } = getDayBounds();
   try {
-    const snapshot = await db.collection("rentals")
-      .where("timestamp", ">=", Timestamp.fromDate(start))
-      .where("timestamp", "<", Timestamp.fromDate(end))
+    const snap = await db.collection("rentals")
+      .where("timestamp", ">=", startTs)
+      .where("timestamp", "<", endTs)
       .get();
 
-    const phones = new Set(snapshot.docs.map(doc => doc.data().phoneNumber));
-    res.json({ date: start.toISOString().split("T")[0], totalCustomersToday: phones.size });
+    const phones = new Set();
+    snap.forEach(doc => {
+      const num = doc.data().phoneNumber;
+      if (num) phones.add(`${doc.data().stationCode}::${num}`); // ensure per‑station uniqueness
+    });
+
+    res.json({
+      date: dateStr,
+      totalCustomersToday: phones.size,
+      stations: new Set(snap.docs.map(d=>d.data().stationCode)).size
+    });
   } catch (err) {
-    console.error("Error fetching total daily customers:", err);
-    res.status(500).json({ error: "Failed to fetch total daily customers" });
+    console.error("❌ Daily-total error:", err);
+    res.status(500).json({ error: "Failed to fetch daily total customers" });
   }
 });
 
-// 🏢 GET: Total monthly customers across all stations
-router.get("/monthly-total", async (_req, res) => {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const end = new Date(start);
-  end.setMonth(end.getMonth() + 1);
-
+// GET /api/customers/monthly-total
+// Sum of unique customers across all stations this month
+router.get("/monthly-total", async (req, res) => {
+  const { startTs, endTs, monthKey } = getMonthBounds();
   try {
-    const snapshot = await db.collection("rentals")
-      .where("timestamp", ">=", Timestamp.fromDate(start))
-      .where("timestamp", "<", Timestamp.fromDate(end))
+    const snap = await db.collection("rentals")
+      .where("timestamp", ">=", startTs)
+      .where("timestamp", "<", endTs)
       .get();
 
-    const phones = new Set(snapshot.docs.map(doc => doc.data().phoneNumber));
-    res.json({ month: `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`, totalCustomersThisMonth: phones.size });
+    const phones = new Set();
+    snap.forEach(doc => {
+      const { stationCode, phoneNumber } = doc.data();
+      if (phoneNumber) phones.add(`${stationCode}::${phoneNumber}`);
+    });
+
+    res.json({
+      month: monthKey,
+      totalCustomersThisMonth: phones.size,
+      stations: new Set(snap.docs.map(d=>d.data().stationCode)).size
+    });
   } catch (err) {
-    console.error("Error fetching total monthly customers:", err);
-    res.status(500).json({ error: "Failed to fetch total monthly customers" });
+    console.error("❌ Monthly-total error:", err);
+    res.status(500).json({ error: "Failed to fetch monthly total customers" });
   }
 });
 
