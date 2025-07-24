@@ -24,13 +24,18 @@ function getMonthBounds(date = new Date()) {
   return {
     startTs: Timestamp.fromDate(start),
     endTs: Timestamp.fromDate(end),
-    monthKey: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`,
+    monthKey: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(
+      2,
+      "0"
+    )}`,
   };
 }
 
 // ✅ Daily unique customer count for station (by IMEI)
-router.get("/daily/:imei", async (req, res) => {
+// Change route path to be clearer
+router.get("/daily-by-imei/:imei", async (req, res) => {
   const { imei } = req.params;
+
   const { startTs, endTs, dateStr } = getDayBounds();
 
   try {
@@ -38,7 +43,7 @@ router.get("/daily/:imei", async (req, res) => {
       .collection("rentals")
       .where("imei", "==", imei)
       .where("timestamp", ">=", startTs)
-      .where("timestamp", "<", endTs)
+      .where("timestamp", "<=", endTs)
       .get();
 
     const uniquePhones = new Set();
@@ -50,12 +55,12 @@ router.get("/daily/:imei", async (req, res) => {
     });
 
     res.status(200).json({
-      stationIMEI: imei,
+      imei,
       date: dateStr,
       count: uniquePhones.size,
     });
   } catch (err) {
-    console.error("❌ Error fetching daily rentals:", err);
+    console.error("❌ Error calculating daily rentals:", err);
     res.status(500).json({ error: "Failed to fetch daily customer count" });
   }
 });
