@@ -18,26 +18,38 @@ router.get("/latest", async (req, res) => {
       ...doc.data(),
     }));
 
-    // Step 2: Get unique IMEIs from the rental data
-    const imeis = [...new Set(rentals.map((r) => r.imei))];
+    // Step 2: Get unique IMEIs (filter out null/undefined)
+    const imeis = [
+      ...new Set(rentals.map((r) => r.imei).filter(Boolean)),
+    ];
 
-    // Step 3: Fetch stations that match those IMEIs
+    // Early return if no valid IMEIs
+    if (imeis.length === 0) {
+      return res.json(
+        rentals.map((r) => ({ ...r, stationName: null }))
+      );
+    }
+
+    // Limit to max 10 imeis to satisfy Firestore's .where("in") limit
+    const limitedImeis = imeis.slice(0, 10);
+
+    // Step 3: Fetch stations for those imeis
     const stationSnapshot = await db
       .collection("stations")
-      .where("imei", "in", imeis)
+      .where("imei", "in", limitedImeis)
       .get();
 
-    // Step 4: Build a map of imei => station.name
+    // Step 4: Build imei => name map
     const stationMap = {};
     stationSnapshot.forEach((doc) => {
       const stationData = doc.data();
       stationMap[stationData.imei] = stationData.name || null;
     });
 
-    // Step 5: Attach the station name to each rental
-    const enrichedRentals = rentals.map((rental) => ({
-      ...rental,
-      stationName: stationMap[rental.imei] || null,
+    // Step 5: Enrich
+    const enrichedRentals = rentals.map((r) => ({
+      ...r,
+      stationName: stationMap[r.imei] || null,
     }));
 
     res.json(enrichedRentals);
@@ -46,5 +58,7 @@ router.get("/latest", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch enriched rentals ❌" });
   }
 });
+
+
 
 export default router;
