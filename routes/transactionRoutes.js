@@ -1,14 +1,22 @@
 import express from "express";
 import db from "../config/firebase.js";
+import { Timestamp } from "firebase-admin/firestore";
 
 const router = express.Router();
 
 router.get("/latest", async (req, res) => {
   try {
-    // Step 1: Fetch latest 10 rented transactions
+    // Get date 2 days ago
+    const now = Timestamp.now();
+    const twoDaysAgo = Timestamp.fromDate(
+      new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
+    );
+
+    // Step 1: Filter only recent "rented" transactions
     const rentalsSnapshot = await db
       .collection("rentals")
       .where("status", "==", "rented")
+      .where("timestamp", ">=", twoDaysAgo) // only recent
       .orderBy("timestamp", "desc")
       .limit(10)
       .get();
@@ -18,35 +26,26 @@ router.get("/latest", async (req, res) => {
       ...doc.data(),
     }));
 
-    // Step 2: Get unique IMEIs (filter out null/undefined)
-    const imeis = [
-      ...new Set(rentals.map((r) => r.imei).filter(Boolean)),
-    ];
-
-    // Early return if no valid IMEIs
-    if (imeis.length === 0) {
-      return res.json(
-        rentals.map((r) => ({ ...r, stationName: null }))
-      );
+    if (rentals.length === 0) {
+      return res.status(200).json([]); // no rentals found
     }
 
-    // Limit to max 10 imeis to satisfy Firestore's .where("in") limit
-    const limitedImeis = imeis.slice(0, 10);
+    // Step 2: Get IMEIs from the rental data
+    const imeis = [...new Set(rentals.map((r) => r.imei))];
 
-    // Step 3: Fetch stations for those imeis
+    // Step 3: Fetch stations for these IMEIs
     const stationSnapshot = await db
       .collection("stations")
-      .where("imei", "in", limitedImeis)
+      .where("imei", "in", imeis)
       .get();
 
-    // Step 4: Build imei => name map
     const stationMap = {};
     stationSnapshot.forEach((doc) => {
-      const stationData = doc.data();
-      stationMap[stationData.imei] = stationData.name || null;
+      const data = doc.data();
+      stationMap[data.imei] = data.name || null;
     });
 
-    // Step 5: Enrich
+    // Step 4: Enrich rentals
     const enrichedRentals = rentals.map((r) => ({
       ...r,
       stationName: stationMap[r.imei] || null,
@@ -58,7 +57,5 @@ router.get("/latest", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch enriched rentals ❌" });
   }
 });
-
-
 
 export default router;
