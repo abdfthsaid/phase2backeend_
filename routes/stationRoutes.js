@@ -208,6 +208,26 @@ router.get("/stats", async (req, res) => {
   }
 });
 
+// GET /api/stations/stats/:imei
+router.get("/stats/:imei", async (req, res) => {
+  const { imei } = req.params;
+
+  try {
+    const doc = await db.collection("station_stats").doc(imei).get();
+
+    if (!doc.exists) {
+      return res
+        .status(404)
+        .json({ error: `No stats found for station ${imei}` });
+    }
+
+    return res.json({ station: doc.data() });
+  } catch (err) {
+    console.error(`Get Station Stats Error (${imei}):`, err.message);
+    return res.status(500).json({ error: "Failed to fetch station stats" });
+  }
+});
+
 router.get("/basic", async (req, res) => {
   try {
     const stationsSnap = await db.collection("stations").get();
