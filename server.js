@@ -196,22 +196,22 @@ app.post("/api/pay/:stationCode", async (req, res) => {
   }
 });
 
-// // 📦 Routes
-// app.use("/api/stations", stationRoutes);
-// app.use("/api/rentals", rentalRoutes);
-// app.use("/api/stats", statsRoutes);
-// app.use("/api/customers", customerRoutes);
-// app.use("/api/revenue", revenueRoutes);
-// app.use("/api/users", userRoutes);
-// app.use("/api/transactions", transactionRoutes);
-// app.use("/api/charts", chartsRoute);
-// app.use("/api/chartsAll", chartsAll);
+// 📦 Routes
+app.use("/api/stations", stationRoutes);
+app.use("/api/rentals", rentalRoutes);
+app.use("/api/stats", statsRoutes);
+app.use("/api/customers", customerRoutes);
+app.use("/api/revenue", revenueRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/transactions", transactionRoutes);
+app.use("/api/charts", chartsRoute);
+app.use("/api/chartsAll", chartsAll);
 
 // 🔁 : Auto update station stats every 5 minutes
-// setInterval(() => {
-//   console.log("⏱️ Updating station stats...");
-//   updateStationStats();
-// }, 5 * 60 * 1000);
+setInterval(() => {
+  console.log("⏱️ Updating station stats...");
+  updateStationStats();
+}, 5 * 60 * 1000);
 
 // 🚀 Server start
 app.listen(PORT, () => {
