@@ -161,16 +161,16 @@ app.post("/api/pay/:stationCode", async (req, res) => {
     }
 
     // // // 📝 Step 2: Log rental to Firestore
-    const rentalRef = await db.collection("rentals").add({
-      imei,
-      stationCode,
-      battery_id,
-      slot_id,
-      phoneNumber,
-      amount,
-      status: "rented",
-      timestamp: new Date(),
-    });
+    // const rentalRef = await db.collection("rentals").add({
+    //   imei,
+    //   stationCode,
+    //   battery_id,
+    //   slot_id,
+    //   phoneNumber,
+    //   amount,
+    //   status: "rented",
+    //   timestamp: new Date(),
+    // });
 
     // 🔓 Step 3: Unlock battery
     let unlockRes;
