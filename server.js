@@ -106,14 +106,14 @@ app.post("/api/pay/:stationCode", async (req, res) => {
 
   try {
     // ✅ Check station online status before proceeding
-    // const statsDoc = await db.collection("station_stats").doc(imei).get();
-    // if (!statsDoc.exists) {
-    //   return res.status(404).json({ error: "Station stats not found ❌" });
-    // }
-    // const isOnline = statsDoc.data().station_status === "Online";
-    // if (!isOnline) {
-    //   return res.status(403).json({ error: "Station is currently offline ⛔" });
-    // }
+    const statsDoc = await db.collection("station_stats").doc(imei).get();
+    if (!statsDoc.exists) {
+      return res.status(404).json({ error: "Station stats not found ❌" });
+    }
+    const isOnline = statsDoc.data().station_status === "Online";
+    if (!isOnline) {
+      return res.status(403).json({ error: "Station is currently offline ⛔" });
+    }
 
     const battery = await getAvailableBattery(imei);
     if (!battery) {
