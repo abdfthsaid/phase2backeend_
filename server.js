@@ -211,7 +211,7 @@ app.use("/api/chartsAll", chartsAll);
 setInterval(() => {
   console.log("⏱️ Updating station stats...");
   updateStationStats();
-}, 5 * 60 * 1000);
+}, 13 * 60 * 1000);
 
 // 🚀 Server start
 app.listen(PORT, () => {
