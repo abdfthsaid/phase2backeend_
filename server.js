@@ -68,7 +68,7 @@ async function getAvailableBattery(imei) {
     const batteries = res.data.batteries.filter(
       (b) =>
         b.lock_status === "1" &&
-        parseInt(b.battery_capacity) >= 60 &&
+        parseInt(b.battery_capacity) >= 40 &&
         b.battery_abnormal === "0" &&
         b.cable_abnormal === "0"
     );
@@ -175,7 +175,7 @@ app.post("/api/pay/:stationCode", async (req, res) => {
         res,
         false,
         null,
-        { code: "NO_BATTERY_AVAILABLE", message: "No available battery ≥ 60%" }
+        { code: "NO_BATTERY_AVAILABLE", message: "No available battery ≥ 40%" }
       );
     }
 
