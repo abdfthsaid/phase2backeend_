@@ -52,14 +52,9 @@ const stationImeisByCode = {
   "05": STATION_DILEK_SOMALIA,
 };
 
-// 🛠️ Unified error sender
-function sendError(res, code, message, status = 400) {
-  return res.status(status).json({
-    error: {
-      code,
-      message
-    }
-  });
+// 🛠️ Unified response sender
+function sendResponse(res, success, data = null, error = null, status = 200) {
+  return res.status(status).json({ success, data, error });
 }
 
 // 🔋 Get available battery
@@ -104,14 +99,14 @@ async function releaseBattery(imei, battery_id, slot_id) {
         err.response?.data?.params?.description ||
         err.response?.data?.responseMsg ||
         err.message ||
-        "Battery unlock failed"
+        "Battery unlock failed",
     };
   }
 }
 
 // 🌐 Home route
 app.get("/", (req, res) => {
-  res.send("🚀 Waafi backend is running!");
+  sendResponse(res, true, { message: "🚀 Waafi backend is running!" });
 });
 
 // 💳 Payment + rental logging + unlock battery
@@ -120,38 +115,73 @@ app.post("/api/pay/:stationCode", async (req, res) => {
   const { phoneNumber, amount } = req.body;
 
   if (!phoneNumber || !amount) {
-    return sendError(res, "MISSING_INPUT", "Missing phoneNumber or amount");
+    return sendResponse(
+      res,
+      false,
+      null,
+      { code: "MISSING_INPUT", message: "Missing phoneNumber or amount" }
+    );
   }
 
   const imei = stationImeisByCode[stationCode];
   if (!imei) {
-    return sendError(res, "INVALID_STATION", "Invalid station code", 404);
+    return sendResponse(
+      res,
+      false,
+      null,
+      { code: "INVALID_STATION", message: "Invalid station code" },
+      404
+    );
   }
 
   try {
-    // ✅ Check station online status before proceeding
+    // Check station online status
     let statsDoc;
     try {
       statsDoc = await db.collection("station_stats").doc(imei).get();
     } catch {
-      return sendError(res, "API_UNREACHABLE", "Database/API is not working", 503);
+      return sendResponse(
+        res,
+        false,
+        null,
+        { code: "API_UNREACHABLE", message: "Database/API is not working" },
+        503
+      );
     }
 
     if (!statsDoc.exists) {
-      return sendError(res, "STATION_STATS_NOT_FOUND", "Station stats not found", 404);
+      return sendResponse(
+        res,
+        false,
+        null,
+        { code: "STATION_STATS_NOT_FOUND", message: "Station stats not found" },
+        404
+      );
     }
+
     if (statsDoc.data().station_status !== "Online") {
-      return sendError(res, "STATION_OFFLINE", "Station is currently offline", 403);
+      return sendResponse(
+        res,
+        false,
+        null,
+        { code: "STATION_OFFLINE", message: "Station is currently offline" },
+        403
+      );
     }
 
     const battery = await getAvailableBattery(imei);
     if (!battery) {
-      return sendError(res, "NO_BATTERY_AVAILABLE", "No available battery ≥ 60%");
+      return sendResponse(
+        res,
+        false,
+        null,
+        { code: "NO_BATTERY_AVAILABLE", message: "No available battery ≥ 60%" }
+      );
     }
 
     const { battery_id, slot_id } = battery;
 
-    // 🔐 Step 1: WAAFI payment request
+    // WAAFI payment request
     let waafiRes;
     try {
       const waafiPayload = {
@@ -180,7 +210,13 @@ app.post("/api/pay/:stationCode", async (req, res) => {
         headers: { "Content-Type": "application/json" },
       });
     } catch {
-      return sendError(res, "API_UNREACHABLE", "WAAFI API is not working", 503);
+      return sendResponse(
+        res,
+        false,
+        null,
+        { code: "API_UNREACHABLE", message: "WAAFI API is not working" },
+        503
+      );
     }
 
     const approved =
@@ -188,16 +224,21 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       waafiRes.data.params?.state === "APPROVED";
 
     if (!approved) {
-      return sendError(
+      return sendResponse(
         res,
-        "PAYMENT_FAILED",
-        waafiRes.data.params?.description ||
-          waafiRes.data.responseMsg ||
-          "Payment not approved"
+        false,
+        null,
+        {
+          code: "PAYMENT_FAILED",
+          message:
+            waafiRes.data.params?.description ||
+            waafiRes.data.responseMsg ||
+            "Payment not approved",
+        }
       );
     }
 
-    // 📝 Step 2: Log rental to Firestore
+    // Log rental to Firestore
     const rentalRef = await db.collection("rentals").add({
       imei,
       stationCode,
@@ -209,25 +250,31 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       timestamp: new Date(),
     });
 
-    // 🔓 Step 3: Unlock battery
+    // Unlock battery
     try {
       const unlockRes = await releaseBattery(imei, battery_id, slot_id);
-      res.json({
-        success: true,
+      return sendResponse(res, true, {
         battery_id,
         slot_id,
         unlock: unlockRes,
       });
     } catch (unlockErr) {
       await rentalRef.delete(); // rollback
-      return sendError(res, unlockErr.code, unlockErr.message, 500);
+      return sendResponse(
+        res,
+        false,
+        null,
+        { code: unlockErr.code, message: unlockErr.message },
+        500
+      );
     }
   } catch (err) {
     console.error("❌ General error:", err);
-    return sendError(
+    return sendResponse(
       res,
-      err.code || "SERVER_ERROR",
-      err.message || "Unexpected server error",
+      false,
+      null,
+      { code: err.code || "SERVER_ERROR", message: err.message || "Unexpected server error" },
       500
     );
   }
