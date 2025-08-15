@@ -43,12 +43,14 @@ export async function updateStationStats() {
         data.station_status === "Offline" ? "Offline" : "Online";
 
       // 2. Load station metadata (name, location, iccid)
-      let meta = stationCache[imei];
-      if (!meta) {
-        const doc = await db.collection("stations").doc(imei).get();
-        meta = doc.exists ? doc.data() : {};
-        stationCache[imei] = meta;
-      }
+     const doc = await db.collection("stations").doc(imei).get();
+    let meta = doc.exists ? doc.data() : {};
+    
+    stationCache[imei] = {
+      ...stationCache[imei],
+      iccid: meta.iccid || stationCache[imei]?.iccid || "",
+    };
+
 
       // 3. If offline, write offline snapshot and continue
       if (station_status === "Offline") {
