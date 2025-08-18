@@ -31,7 +31,11 @@ function getMonthBounds(date = new Date()) {
   };
 }
 
-// ✅ Daily customer count for station (by IMEI) → NOW raw rentals
+/* ------------------------------------------------------------------ */
+/* 📌 Station-level counts (raw rentals)                              */
+/* ------------------------------------------------------------------ */
+
+// Daily customer count for a station (by IMEI) → raw rentals
 router.get("/daily-by-imei/:imei", async (req, res) => {
   const { imei } = req.params;
   const { startTs, endTs, dateStr } = getDayBounds();
@@ -47,7 +51,7 @@ router.get("/daily-by-imei/:imei", async (req, res) => {
     res.status(200).json({
       imei,
       date: dateStr,
-      count: snapshot.size, // 👈 raw doc count
+      count: Number(snapshot.size), // ✅ ensure number
     });
   } catch (err) {
     console.error("❌ Error calculating daily rentals:", err);
@@ -55,7 +59,7 @@ router.get("/daily-by-imei/:imei", async (req, res) => {
   }
 });
 
-// ✅ Monthly customer count for station (by IMEI) → NOW raw rentals
+// Monthly customer count for a station (by IMEI) → raw rentals
 router.get("/monthly/:imei", async (req, res) => {
   const { imei } = req.params;
   const { startTs, endTs, monthKey } = getMonthBounds();
@@ -71,7 +75,7 @@ router.get("/monthly/:imei", async (req, res) => {
     res.json({
       stationIMEI: imei,
       month: monthKey,
-      count: snapshot.size, // 👈 raw doc count
+      count: Number(snapshot.size), // ✅ ensure number
     });
   } catch (err) {
     console.error("❌ Monthly customer error:", err);
@@ -79,7 +83,11 @@ router.get("/monthly/:imei", async (req, res) => {
   }
 });
 
-// ✅ Daily total (across all stations) → NOW raw rentals
+/* ------------------------------------------------------------------ */
+/* 📌 Global totals (all stations, raw rentals)                       */
+/* ------------------------------------------------------------------ */
+
+// Daily total across all stations
 router.get("/daily-total", async (req, res) => {
   const { startTs, endTs, dateStr } = getDayBounds();
   try {
@@ -91,8 +99,8 @@ router.get("/daily-total", async (req, res) => {
 
     res.json({
       date: dateStr,
-      totalCustomersToday: snapshot.size, // 👈 raw doc count
-      stations: new Set(snapshot.docs.map((d) => d.data().imei)).size,
+      totalCustomersToday: Number(snapshot.size), // ✅ raw doc count
+      stations: Number(new Set(snapshot.docs.map((d) => d.data().imei)).size), // ✅ numeric
     });
   } catch (err) {
     console.error("❌ Daily-total error:", err);
@@ -100,7 +108,7 @@ router.get("/daily-total", async (req, res) => {
   }
 });
 
-// ✅ Monthly total (across all stations) → NOW raw rentals
+// Monthly total across all stations
 router.get("/monthly-total", async (req, res) => {
   const { startTs, endTs, monthKey } = getMonthBounds();
   try {
@@ -112,8 +120,8 @@ router.get("/monthly-total", async (req, res) => {
 
     res.json({
       month: monthKey,
-      totalCustomersThisMonth: snapshot.size, // 👈 raw doc count
-      stations: new Set(snapshot.docs.map((d) => d.data().imei)).size,
+      totalCustomersThisMonth: Number(snapshot.size), // ✅ raw doc count
+      stations: Number(new Set(snapshot.docs.map((d) => d.data().imei)).size), // ✅ numeric
     });
   } catch (err) {
     console.error("❌ Monthly-total error:", err);
