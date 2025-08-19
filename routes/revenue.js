@@ -13,14 +13,19 @@ const imeiToStationCode = {
   "WSEP161741066503": "03",
 };
 
+// ✅ Helper to calculate revenue after Waafi cut
+function netRevenue(amount) {
+  if (amount === 1) return amount - 0.02;   // $1 payment, 2% cut
+  if (amount === 0.5) return amount - 0.01; // $0.5 payment, 2% cut
+  return amount; // fallback for other amounts
+}
+
 // ✅ DAILY REVENUE FOR SINGLE STATION (by IMEI)
 router.get("/daily/:imei", async (req, res) => {
   const imei = req.params.imei;
   const stationCode = imeiToStationCode[imei];
 
-  if (!stationCode) {
-    return res.status(400).json({ error: `Unknown IMEI ${imei}` });
-  }
+  if (!stationCode) return res.status(400).json({ error: `Unknown IMEI ${imei}` });
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -40,7 +45,7 @@ router.get("/daily/:imei", async (req, res) => {
       const data = doc.data();
       const amount = parseFloat(data.amount || 0);
       if (!isNaN(amount)) {
-        total += amount;
+        total += netRevenue(amount); // apply Waafi cut
         count++;
       }
     });
@@ -77,7 +82,7 @@ router.get("/daily", async (req, res) => {
       const data = doc.data();
       const amount = parseFloat(data.amount || 0);
       if (!isNaN(amount)) {
-        total += amount;
+        total += netRevenue(amount); // apply Waafi cut
         count++;
       }
     });
@@ -98,9 +103,7 @@ router.get("/monthly/:imei", async (req, res) => {
   const imei = req.params.imei;
   const stationCode = imeiToStationCode[imei];
 
-  if (!stationCode) {
-    return res.status(400).json({ error: `Unknown IMEI ${imei}` });
-  }
+  if (!stationCode) return res.status(400).json({ error: `Unknown IMEI ${imei}` });
 
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -120,7 +123,7 @@ router.get("/monthly/:imei", async (req, res) => {
       const data = doc.data();
       const amount = parseFloat(data.amount || 0);
       if (!isNaN(amount)) {
-        total += amount;
+        total += netRevenue(amount); // apply Waafi cut
         count++;
       }
     });
@@ -157,7 +160,7 @@ router.get("/monthly", async (req, res) => {
       const data = doc.data();
       const amount = parseFloat(data.amount || 0);
       if (!isNaN(amount)) {
-        total += amount;
+        total += netRevenue(amount); // apply Waafi cut
         count++;
       }
     });
