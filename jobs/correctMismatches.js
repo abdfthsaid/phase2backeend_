@@ -64,9 +64,9 @@ export async function correctMismatches() {
     const start = rentedAt?._seconds || 0;
     const ageSec = Math.floor(Date.now() / 1000) - start;
 
-    // Check if overdue
+    // Overdue calculation: 0.5 USD → 2h, 1 USD → 12h
     let overdue = false;
-    if ((amt === 0.5 && ageSec > 2 * 3600) || (amt === 1 && ageSec > 4 * 3600)) {
+    if ((amt === 0.5 && ageSec > 2 * 3600) || (amt === 1 && ageSec > 12 * 3600)) {
       overdue = true;
     }
 
@@ -82,18 +82,7 @@ export async function correctMismatches() {
     stationAux[imei].activeRentalsCount++;
     if (overdue) stationAux[imei].overdueActiveRentalsCount++;
 
-    // --- Auto-return overdue rentals ---
-    if (overdue) {
-      console.log(`⏰ Overdue rental: battery ${battery_id} at ${imei}`);
-      await doc.ref.update({
-        status: "returned",
-        returnedAt: now,
-        corrected: true,
-        correctionNote: `Auto-closed (overdue ${Math.floor(ageSec / 3600)}h)`,
-      });
-    }
-
-    // --- Ghost check: battery at another station ---
+    // --- Ghost/moved rental check ---
     const physical = liveMap[battery_id];
     if (physical && physical.stationId !== imei) {
       console.log(
@@ -111,12 +100,27 @@ export async function correctMismatches() {
         overdue,
       });
 
-      // Auto-close ghost rental
+      // Auto-close rental
       await doc.ref.update({
         status: "returned",
         returnedAt: now,
         corrected: true,
         correctionNote: `Auto-closed (battery physically at ${physical.stationId})`,
+      });
+    }
+
+    // --- Overdue rental handling ---
+    if (!physical && overdue) {
+      console.log(
+        `⏰ Overdue rental: battery ${battery_id} rented at ${imei} is overdue`
+      );
+
+      // Auto-close overdue rental
+      await doc.ref.update({
+        status: "returned",
+        returnedAt: now,
+        corrected: true,
+        correctionNote: `Auto-closed (overdue rental)`,
       });
     }
   }
@@ -132,7 +136,7 @@ export async function correctMismatches() {
   console.log("✅ Correction job finished");
 }
 
-// Optional: run once on server start
-correctMismatches().catch(console.error);
+// Run once on import if desired
+correctMismatches().catch((err) => console.error(err));
 
 export default correctMismatches;
