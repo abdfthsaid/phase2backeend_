@@ -24,6 +24,9 @@ import correctMismatches from "./jobs/correctMismatches.js";
 // ...
 import db from "./config/firebase.js";
 
+// Run once immediately on startup
+correctMismatches().catch(err => console.error("❌ Correction job failed:", err));
+
 // 🌍 ENV
 const {
   PORT = 3000,
