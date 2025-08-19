@@ -28,8 +28,10 @@ async function fetchAllBatteries() {
       });
 
       const batteries = data.batteries || [];
-      batteries.forEach(b => {
-        all[b.battery_id] = { imei, slot_id: b.slot_id };
+      batteries.forEach((b) => {
+        if (b.battery_id) {
+          all[b.battery_id] = { stationId: imei, slot_id: b.slot_id };
+        }
       });
     } catch (err) {
       console.error(`❌ Failed to fetch station ${imei}:`, err.message);
@@ -43,36 +45,76 @@ export async function correctMismatches() {
   const now = Timestamp.now();
   const liveMap = await fetchAllBatteries();
 
+  // Rentals still open
   const rentalsSnap = await db
     .collection("rentals")
     .where("status", "==", "rented")
     .get();
 
+  // Auxiliary data builder
+  const stationAux = {}; // imei -> { activeRentalsCount, overdueActiveRentalsCount, ghostRentals }
+
   for (const doc of rentalsSnap.docs) {
     const rental = doc.data();
-    const { battery_id, imei } = rental;
+    const rentalId = doc.id;
+    const { battery_id, imei, rentedAt, amount, phoneNumber } = rental;
 
-    if (liveMap[battery_id]) {
-      const realStation = liveMap[battery_id].imei;
+    // Normalize amount to number
+    const amt = Number(amount) || 0;
+    const start = rentedAt?._seconds || 0;
+    const ageSec = Math.floor(Date.now() / 1000) - start;
 
-      if (realStation !== imei) {
-        // Battery is in another station physically
-        console.log(
-          `🔄 Battery ${battery_id} mismatch: rented in ${imei}, found in ${realStation}`
-        );
-
-        // Auto-return the old rental
-        await doc.ref.update({
-          status: "returned",
-          returnedAt: now,
-          corrected: true,
-          correctionNote: `Returned automatically (found in ${realStation})`,
-        });
-
-        // Optional: You could also create a new record at realStation
-        // await db.collection("rentals").add({ ...rental, imei: realStation, status: "corrected" });
-      }
+    let overdue = false;
+    if ((amt === 0.5 && ageSec > 2 * 3600) || (amt === 1 && ageSec > 4 * 3600)) {
+      overdue = true;
     }
+
+    // Init station aux stats
+    if (!stationAux[imei]) {
+      stationAux[imei] = {
+        activeRentalsCount: 0,
+        overdueActiveRentalsCount: 0,
+        ghostRentals: [],
+      };
+    }
+
+    stationAux[imei].activeRentalsCount++;
+    if (overdue) stationAux[imei].overdueActiveRentalsCount++;
+
+    // --- Ghost check ---
+    const physical = liveMap[battery_id];
+    if (physical && physical.stationId !== imei) {
+      console.log(
+        `👻 Ghost rental: battery ${battery_id} rented at ${imei}, found at ${physical.stationId}`
+      );
+
+      // Add to ghost list
+      stationAux[imei].ghostRentals.push({
+        rentalId,
+        battery_id,
+        rentedAt: start,
+        phone: phoneNumber || "",
+        foundAt: physical.stationId,
+        slot_id: physical.slot_id,
+        overdue,
+      });
+
+      // Auto-close rental
+      await doc.ref.update({
+        status: "returned",
+        returnedAt: now,
+        corrected: true,
+        correctionNote: `Auto-closed (battery physically at ${physical.stationId})`,
+      });
+    }
+  }
+
+  // Step 3: Write auxiliary stats
+  for (const [stationId, data] of Object.entries(stationAux)) {
+    await db.collection("station_stats_aux").doc(stationId).set({
+      ...data,
+      updatedAt: new Date(),
+    });
   }
 
   console.log("✅ Correction job finished");
