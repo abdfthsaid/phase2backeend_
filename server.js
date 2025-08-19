@@ -18,6 +18,8 @@ import userRoutes from "./routes/userRoutes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
 import chartsRoute from "./routes/charts.js";
 import chartsAll from "./routes/chartsAll.js";
+import correctMismatches from "./jobs/correctMismatches.js";
+
 
 // ...
 import db from "./config/firebase.js";
@@ -296,6 +298,12 @@ setInterval(() => {
   console.log("⏱️ Updating station stats...");
   updateStationStats();
 }, 13 * 60 * 1000);
+
+// 🔁 Auto correct rental/station mismatches every 15 minutes
+setInterval(() => {
+  console.log("⏱️ Correcting mismatches...");
+  correctMismatches();
+}, 15 * 60 * 1000);
 
 // 🚀 Server start
 app.listen(PORT, () => {
