@@ -20,12 +20,7 @@ import chartsRoute from "./routes/charts.js";
 import chartsAll from "./routes/chartsAll.js";
 import correctMismatches from "./jobs/correctMismatches.js";
 
-// 
-// ...
 import db from "./config/firebase.js";
-
-// Run once immediately on startup
-// correctMismatches().catch(err => console.error("❌ Correction job failed:", err));
 
 // 🌍 ENV
 const {
@@ -114,7 +109,7 @@ app.get("/", (req, res) => {
   sendResponse(res, true, { message: "🚀 Waafi backend is running!" });
 });
 
-// 💳 Payment + rental logging + unlock battery
+// 💳 Payment + rental logging + revenue after Waafi cut + unlock battery
 app.post("/api/pay/:stationCode", async (req, res) => {
   const { stationCode } = req.params;
   const { phoneNumber, amount } = req.body;
@@ -141,35 +136,13 @@ app.post("/api/pay/:stationCode", async (req, res) => {
 
   try {
     // Check station online status
-    let statsDoc;
-    try {
-      statsDoc = await db.collection("station_stats").doc(imei).get();
-    } catch {
+    const statsDoc = await db.collection("station_stats").doc(imei).get();
+    if (!statsDoc.exists || statsDoc.data().station_status !== "Online") {
       return sendResponse(
         res,
         false,
         null,
-        { code: "API_UNREACHABLE", message: "Database/API is not working" },
-        503
-      );
-    }
-
-    if (!statsDoc.exists) {
-      return sendResponse(
-        res,
-        false,
-        null,
-        { code: "STATION_STATS_NOT_FOUND", message: "Station stats not found" },
-        404
-      );
-    }
-
-    if (statsDoc.data().station_status !== "Online") {
-      return sendResponse(
-        res,
-        false,
-        null,
-        { code: "STATION_OFFLINE", message: "Station is currently offline" },
+        { code: "STATION_OFFLINE", message: "Station is offline or stats missing" },
         403
       );
     }
@@ -214,6 +187,7 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       waafiRes = await axios.post(WAAFI_URL, waafiPayload, {
         headers: { "Content-Type": "application/json" },
       });
+      console.log("WAAFI response:", JSON.stringify(waafiRes.data, null, 2));
     } catch {
       return sendResponse(
         res,
@@ -224,10 +198,8 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       );
     }
 
-    const approved =
-      waafiRes.data.responseCode === "2001" &&
-      waafiRes.data.params?.state === "APPROVED";
-
+    // ✅ Correct approval check
+    const approved = waafiRes.data.responseCode == 2001;
     if (!approved) {
       return sendResponse(
         res,
@@ -243,6 +215,21 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       );
     }
 
+    // Calculate revenue after Waafi cut (1% per 0.5, 2% per 1)
+    const originalAmount = parseFloat(amount);
+    let waafiCut = 0;
+
+    // 2% per whole 1 unit
+    waafiCut += 0.02 * Math.floor(originalAmount);
+
+    // 1% per 0.5 in remainder
+    const remainder = originalAmount - Math.floor(originalAmount);
+    if (remainder >= 0.5) {
+      waafiCut += 0.01 * Math.floor(remainder / 0.5);
+    }
+
+    const revenueAmount = parseFloat((originalAmount - waafiCut).toFixed(2));
+
     // Log rental to Firestore
     const rentalRef = await db.collection("rentals").add({
       imei,
@@ -250,7 +237,8 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       battery_id,
       slot_id,
       phoneNumber,
-      amount,
+      amount: originalAmount,
+      revenue: revenueAmount,
       status: "rented",
       timestamp: new Date(),
     });
@@ -262,6 +250,7 @@ app.post("/api/pay/:stationCode", async (req, res) => {
         battery_id,
         slot_id,
         unlock: unlockRes,
+        revenue: revenueAmount,
       });
     } catch (unlockErr) {
       await rentalRef.delete(); // rollback
@@ -302,7 +291,7 @@ setInterval(() => {
   updateStationStats();
 }, 13 * 60 * 1000);
 
-// 🔁 Auto correct rental/station mismatches every 15 minutes
+// 🔁 Auto correct rental/station mismatches every 60 minutes
 setInterval(() => {
   console.log("⏱️ Correcting mismatches...");
   correctMismatches();
