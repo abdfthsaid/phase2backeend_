@@ -18,7 +18,7 @@ import userRoutes from "./routes/userRoutes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
 import chartsRoute from "./routes/charts.js";
 import chartsAll from "./routes/chartsAll.js";
-// import correctMismatches from "./jobs/correctMismatches.js";
+import correctMismatches from "./jobs/correctMismatches.js";
 
 // 
 // ...
@@ -303,10 +303,10 @@ setInterval(() => {
 }, 13 * 60 * 1000);
 
 // 🔁 Auto correct rental/station mismatches every 15 minutes
-// setInterval(() => {
-//   console.log("⏱️ Correcting mismatches...");
-//   correctMismatches();
-// }, 15 * 60 * 1000);
+setInterval(() => {
+  console.log("⏱️ Correcting mismatches...");
+  correctMismatches();
+}, 60 * 60 * 1000);
 
 // 🚀 Server start
 app.listen(PORT, () => {
