@@ -43,14 +43,13 @@ export async function updateStationStats() {
         data.station_status === "Offline" ? "Offline" : "Online";
 
       // 2. Load station metadata (name, location, iccid)
-     const doc = await db.collection("stations").doc(imei).get();
-    let meta = doc.exists ? doc.data() : {};
-    
-    stationCache[imei] = {
-      ...stationCache[imei],
-      iccid: meta.iccid || stationCache[imei]?.iccid || "",
-    };
+      const doc = await db.collection("stations").doc(imei).get();
+      let meta = doc.exists ? doc.data() : {};
 
+      stationCache[imei] = {
+        ...stationCache[imei],
+        iccid: meta.iccid || stationCache[imei]?.iccid || "",
+      };
 
       // 3. If offline, write offline snapshot and continue
       if (station_status === "Offline") {
@@ -122,11 +121,28 @@ export async function updateStationStats() {
       const nowDate = now.toDate();
 
       // 8. Merge rental data
-      rentalsSnap.forEach((doc) => {
-        const r = doc.data();
+      for (const rentalDoc of rentalsSnap.docs) {
+        const r = rentalDoc.data();
+
+        // ✅ Fix: If battery is missing but already rented again → close old rental
+        const duplicateSnap = await db
+          .collection("rentals")
+          .where("battery_id", "==", r.battery_id)
+          .where("status", "==", "rented")
+          .orderBy("timestamp", "desc")
+          .get();
+
+        if (duplicateSnap.docs.length > 1) {
+          // Close all but the latest rental
+          duplicateSnap.docs.slice(1).forEach(async (d) => {
+            await d.ref.update({ status: "returned", returnedAt: now });
+            console.log(`🛑 Closed duplicate rental for ${r.battery_id}`);
+          });
+        }
+
         if (presentIds.has(r.battery_id)) {
-          // Auto-return
-          doc.ref.update({ status: "returned", returnedAt: now });
+          // Auto-return if battery is back inside
+          rentalDoc.ref.update({ status: "returned", returnedAt: now });
           console.log(`↩️ Auto-returned ${r.battery_id}`);
         } else {
           rentedCount++;
@@ -150,7 +166,7 @@ export async function updateStationStats() {
             amount: r.amount,
           });
         }
-      });
+      }
 
       // 9. Finalize slots and counts
       const slots = Array.from(slotMap.values()).sort(
