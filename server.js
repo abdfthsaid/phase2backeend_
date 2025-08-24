@@ -215,6 +215,19 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       );
     }
 
+    // 🔒 Prevent duplicate rentals by transactionId
+    const { transactionId, issuerTransactionId, referenceId } = waafiRes.data.params;
+    const existing = await db.collection("rentals")
+      .where("transactionId", "==", transactionId)
+      .get();
+    if (!existing.empty) {
+      console.log("⚠️ Duplicate Waafi transaction, skipping:", transactionId);
+      return sendResponse(res, true, {
+        message: "Payment already processed",
+        transactionId,
+      });
+    }
+
     // Calculate revenue after Waafi cut (1% per 0.5, 2% per 1)
     const originalAmount = parseFloat(amount);
     let waafiCut = 0;
@@ -240,6 +253,9 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       amount: originalAmount,
       revenue: revenueAmount,
       status: "rented",
+      transactionId,
+      issuerTransactionId,
+      referenceId,
       timestamp: new Date(),
     });
 
