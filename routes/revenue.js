@@ -13,13 +13,6 @@ const imeiToStationCode = {
   "WSEP161741066503": "03",
 };
 
-// ✅ Helper to calculate revenue after Waafi cut
-function netRevenue(amount) {
-  if (amount === 1) return amount - 0.02;   // $1 payment, 2% cut
-  if (amount === 0.5) return amount - 0.01; // $0.5 payment, 2% cut
-  return amount; // fallback for other amounts
-}
-
 // ✅ Helper: get UTC start of day/month
 function getUTCStartOfDay(date = new Date()) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0));
@@ -50,9 +43,9 @@ router.get("/daily/:imei", async (req, res) => {
 
     snapshot.forEach((doc) => {
       const data = doc.data();
-      const amount = parseFloat(data.amount || 0);
-      if (!isNaN(amount)) {
-        total += netRevenue(amount);
+      const revenue = parseFloat(data.revenue || 0);
+      if (!isNaN(revenue)) {
+        total += revenue;
         count++;
       }
     });
@@ -60,9 +53,9 @@ router.get("/daily/:imei", async (req, res) => {
     res.json({
       imei,
       stationCode,
-      totalRevenueToday: total,
+      totalRevenueToday: parseFloat(total.toFixed(2)),
       totalRentalsToday: count,
-      date: todayUTC.toISOString().split("T")[0], // UTC date
+      date: todayUTC.toISOString().split("T")[0],
     });
   } catch (error) {
     console.error("❌ Error calculating daily revenue:", error);
@@ -85,18 +78,17 @@ router.get("/daily", async (req, res) => {
     let count = 0;
 
     snapshot.forEach((doc) => {
-      const data = doc.data();
-      const amount = parseFloat(data.amount || 0);
-      if (!isNaN(amount)) {
-        total += netRevenue(amount);
+      const revenue = parseFloat(doc.data().revenue || 0);
+      if (!isNaN(revenue)) {
+        total += revenue;
         count++;
       }
     });
 
     res.json({
-      totalRevenueToday: total,
+      totalRevenueToday: parseFloat(total.toFixed(2)),
       totalRentalsToday: count,
-      date: todayUTC.toISOString().split("T")[0], // UTC date
+      date: todayUTC.toISOString().split("T")[0],
     });
   } catch (error) {
     console.error("❌ Error calculating total daily revenue:", error);
@@ -126,10 +118,9 @@ router.get("/monthly/:imei", async (req, res) => {
     let count = 0;
 
     snapshot.forEach((doc) => {
-      const data = doc.data();
-      const amount = parseFloat(data.amount || 0);
-      if (!isNaN(amount)) {
-        total += netRevenue(amount);
+      const revenue = parseFloat(doc.data().revenue || 0);
+      if (!isNaN(revenue)) {
+        total += revenue;
         count++;
       }
     });
@@ -137,9 +128,9 @@ router.get("/monthly/:imei", async (req, res) => {
     res.json({
       imei,
       stationCode,
-      totalRevenueMonthly: total,
+      totalRevenueMonthly: parseFloat(total.toFixed(2)),
       totalRentalsThisMonth: count,
-      month: `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`, // UTC month
+      month: `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`,
     });
   } catch (error) {
     console.error("❌ Error calculating monthly revenue:", error);
@@ -163,18 +154,17 @@ router.get("/monthly", async (req, res) => {
     let count = 0;
 
     snapshot.forEach((doc) => {
-      const data = doc.data();
-      const amount = parseFloat(data.amount || 0);
-      if (!isNaN(amount)) {
-        total += netRevenue(amount);
+      const revenue = parseFloat(doc.data().revenue || 0);
+      if (!isNaN(revenue)) {
+        total += revenue;
         count++;
       }
     });
 
     res.json({
-      totalRevenueMonthly: total,
+      totalRevenueMonthly: parseFloat(total.toFixed(2)),
       totalRentalsThisMonth: count,
-      month: `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`, // UTC month
+      month: `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`,
     });
   } catch (error) {
     console.error("❌ Error calculating total monthly revenue:", error);
