@@ -32,10 +32,10 @@ function getMonthBounds(date = new Date()) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 📌 Station-level counts (raw rentals)                              */
+/* 📌 Station-level counts (unique customers by referenceId)          */
 /* ------------------------------------------------------------------ */
 
-// Daily customer count for a station (by IMEI) → raw rentals
+// Daily unique customers for a station (by IMEI)
 router.get("/daily-by-imei/:imei", async (req, res) => {
   const { imei } = req.params;
   const { startTs, endTs, dateStr } = getDayBounds();
@@ -48,10 +48,12 @@ router.get("/daily-by-imei/:imei", async (req, res) => {
       .where("timestamp", "<", endTs)
       .get();
 
+    const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
+
     res.status(200).json({
       imei,
       date: dateStr,
-      count: Number(snapshot.size), // ✅ ensure number
+      totalCustomersToday: uniqueRefs.size,
     });
   } catch (err) {
     console.error("❌ Error calculating daily rentals:", err);
@@ -59,7 +61,7 @@ router.get("/daily-by-imei/:imei", async (req, res) => {
   }
 });
 
-// Monthly customer count for a station (by IMEI) → raw rentals
+// Monthly unique customers for a station (by IMEI)
 router.get("/monthly/:imei", async (req, res) => {
   const { imei } = req.params;
   const { startTs, endTs, monthKey } = getMonthBounds();
@@ -72,10 +74,12 @@ router.get("/monthly/:imei", async (req, res) => {
       .where("timestamp", "<", endTs)
       .get();
 
+    const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
+
     res.json({
       stationIMEI: imei,
       month: monthKey,
-      count: Number(snapshot.size), // ✅ ensure number
+      totalCustomersThisMonth: uniqueRefs.size,
     });
   } catch (err) {
     console.error("❌ Monthly customer error:", err);
@@ -84,7 +88,7 @@ router.get("/monthly/:imei", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* 📌 Global totals (all stations, raw rentals)                       */
+/* 📌 Global totals (all stations, unique customers by referenceId)  */
 /* ------------------------------------------------------------------ */
 
 // Daily total across all stations
@@ -97,10 +101,13 @@ router.get("/daily-total", async (req, res) => {
       .where("timestamp", "<", endTs)
       .get();
 
+    const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
+    const uniqueStations = new Set(snapshot.docs.map((d) => d.data().imei));
+
     res.json({
       date: dateStr,
-      totalCustomersToday: Number(snapshot.size), // ✅ raw doc count
-      stations: Number(new Set(snapshot.docs.map((d) => d.data().imei)).size), // ✅ numeric
+      totalCustomersToday: uniqueRefs.size,
+      stations: uniqueStations.size,
     });
   } catch (err) {
     console.error("❌ Daily-total error:", err);
@@ -118,10 +125,13 @@ router.get("/monthly-total", async (req, res) => {
       .where("timestamp", "<", endTs)
       .get();
 
+    const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
+    const uniqueStations = new Set(snapshot.docs.map((d) => d.data().imei));
+
     res.json({
       month: monthKey,
-      totalCustomersThisMonth: Number(snapshot.size), // ✅ raw doc count
-      stations: Number(new Set(snapshot.docs.map((d) => d.data().imei)).size), // ✅ numeric
+      totalCustomersThisMonth: uniqueRefs.size,
+      stations: uniqueStations.size,
     });
   } catch (err) {
     console.error("❌ Monthly-total error:", err);
