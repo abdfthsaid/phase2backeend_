@@ -20,6 +20,14 @@ function netRevenue(amount) {
   return amount; // fallback for other amounts
 }
 
+// ✅ Helper: get UTC start of day/month
+function getUTCStartOfDay(date = new Date()) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0));
+}
+function getUTCStartOfMonth(date = new Date()) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1, 0, 0, 0, 0));
+}
+
 // ✅ DAILY REVENUE FOR SINGLE STATION (by IMEI)
 router.get("/daily/:imei", async (req, res) => {
   const imei = req.params.imei;
@@ -27,14 +35,13 @@ router.get("/daily/:imei", async (req, res) => {
 
   if (!stationCode) return res.status(400).json({ error: `Unknown IMEI ${imei}` });
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const todayUTC = getUTCStartOfDay();
 
   try {
     const snapshot = await db
       .collection("rentals")
       .where("stationCode", "==", stationCode)
-      .where("timestamp", ">=", Timestamp.fromDate(today))
+      .where("timestamp", ">=", Timestamp.fromDate(todayUTC))
       .where("status", "in", ["rented", "returned"])
       .get();
 
@@ -45,7 +52,7 @@ router.get("/daily/:imei", async (req, res) => {
       const data = doc.data();
       const amount = parseFloat(data.amount || 0);
       if (!isNaN(amount)) {
-        total += netRevenue(amount); // apply Waafi cut
+        total += netRevenue(amount);
         count++;
       }
     });
@@ -55,7 +62,7 @@ router.get("/daily/:imei", async (req, res) => {
       stationCode,
       totalRevenueToday: total,
       totalRentalsToday: count,
-      date: today.toISOString().split("T")[0],
+      date: todayUTC.toISOString().split("T")[0], // UTC date
     });
   } catch (error) {
     console.error("❌ Error calculating daily revenue:", error);
@@ -65,13 +72,12 @@ router.get("/daily/:imei", async (req, res) => {
 
 // ✅ DAILY REVENUE FOR ALL STATIONS
 router.get("/daily", async (req, res) => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const todayUTC = getUTCStartOfDay();
 
   try {
     const snapshot = await db
       .collection("rentals")
-      .where("timestamp", ">=", Timestamp.fromDate(today))
+      .where("timestamp", ">=", Timestamp.fromDate(todayUTC))
       .where("status", "in", ["rented", "returned"])
       .get();
 
@@ -82,7 +88,7 @@ router.get("/daily", async (req, res) => {
       const data = doc.data();
       const amount = parseFloat(data.amount || 0);
       if (!isNaN(amount)) {
-        total += netRevenue(amount); // apply Waafi cut
+        total += netRevenue(amount);
         count++;
       }
     });
@@ -90,7 +96,7 @@ router.get("/daily", async (req, res) => {
     res.json({
       totalRevenueToday: total,
       totalRentalsToday: count,
-      date: today.toISOString().split("T")[0],
+      date: todayUTC.toISOString().split("T")[0], // UTC date
     });
   } catch (error) {
     console.error("❌ Error calculating total daily revenue:", error);
@@ -106,13 +112,13 @@ router.get("/monthly/:imei", async (req, res) => {
   if (!stationCode) return res.status(400).json({ error: `Unknown IMEI ${imei}` });
 
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfMonthUTC = getUTCStartOfMonth(now);
 
   try {
     const snapshot = await db
       .collection("rentals")
       .where("stationCode", "==", stationCode)
-      .where("timestamp", ">=", Timestamp.fromDate(startOfMonth))
+      .where("timestamp", ">=", Timestamp.fromDate(startOfMonthUTC))
       .where("status", "in", ["rented", "returned"])
       .get();
 
@@ -123,7 +129,7 @@ router.get("/monthly/:imei", async (req, res) => {
       const data = doc.data();
       const amount = parseFloat(data.amount || 0);
       if (!isNaN(amount)) {
-        total += netRevenue(amount); // apply Waafi cut
+        total += netRevenue(amount);
         count++;
       }
     });
@@ -133,7 +139,7 @@ router.get("/monthly/:imei", async (req, res) => {
       stationCode,
       totalRevenueMonthly: total,
       totalRentalsThisMonth: count,
-      month: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
+      month: `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`, // UTC month
     });
   } catch (error) {
     console.error("❌ Error calculating monthly revenue:", error);
@@ -144,12 +150,12 @@ router.get("/monthly/:imei", async (req, res) => {
 // ✅ MONTHLY REVENUE FOR ALL STATIONS
 router.get("/monthly", async (req, res) => {
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfMonthUTC = getUTCStartOfMonth(now);
 
   try {
     const snapshot = await db
       .collection("rentals")
-      .where("timestamp", ">=", Timestamp.fromDate(startOfMonth))
+      .where("timestamp", ">=", Timestamp.fromDate(startOfMonthUTC))
       .where("status", "in", ["rented", "returned"])
       .get();
 
@@ -160,7 +166,7 @@ router.get("/monthly", async (req, res) => {
       const data = doc.data();
       const amount = parseFloat(data.amount || 0);
       if (!isNaN(amount)) {
-        total += netRevenue(amount); // apply Waafi cut
+        total += netRevenue(amount);
         count++;
       }
     });
@@ -168,7 +174,7 @@ router.get("/monthly", async (req, res) => {
     res.json({
       totalRevenueMonthly: total,
       totalRentalsThisMonth: count,
-      month: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
+      month: `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`, // UTC month
     });
   } catch (error) {
     console.error("❌ Error calculating total monthly revenue:", error);
