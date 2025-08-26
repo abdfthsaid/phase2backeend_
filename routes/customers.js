@@ -1,4 +1,3 @@
-// routes/customerRoutes.js
 import express from "express";
 import db from "../config/firebase.js";
 import { Timestamp } from "firebase-admin/firestore";
@@ -48,12 +47,10 @@ router.get("/daily-by-imei/:imei", async (req, res) => {
       .where("imei", "==", imei)
       .where("timestamp", ">=", startTs)
       .where("timestamp", "<", endTs)
+      .where("referenceId", "!=", null) // ✅ only new rentals
       .get();
 
-    // ✅ unique referenceId only
-    const uniqueRefs = new Set(
-      snapshot.docs.map((d) => d.data().referenceId).filter(Boolean)
-    );
+    const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
 
     res.json({
       imei,
@@ -77,11 +74,10 @@ router.get("/monthly/:imei", async (req, res) => {
       .where("imei", "==", imei)
       .where("timestamp", ">=", startTs)
       .where("timestamp", "<", endTs)
+      .where("referenceId", "!=", null) // ✅ only new rentals
       .get();
 
-    const uniqueRefs = new Set(
-      snapshot.docs.map((d) => d.data().referenceId).filter(Boolean)
-    );
+    const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
 
     res.json({
       stationIMEI: imei,
@@ -106,11 +102,10 @@ router.get("/daily-total", async (req, res) => {
       .collection("rentals")
       .where("timestamp", ">=", startTs)
       .where("timestamp", "<", endTs)
+      .where("referenceId", "!=", null) // ✅ only new rentals
       .get();
 
-    const uniqueRefs = new Set(
-      snapshot.docs.map((d) => d.data().referenceId).filter(Boolean)
-    );
+    const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
     const uniqueStations = new Set(snapshot.docs.map((d) => d.data().imei));
 
     res.json({
@@ -132,11 +127,10 @@ router.get("/monthly-total", async (req, res) => {
       .collection("rentals")
       .where("timestamp", ">=", startTs)
       .where("timestamp", "<", endTs)
+      .where("referenceId", "!=", null) // ✅ only new rentals
       .get();
 
-    const uniqueRefs = new Set(
-      snapshot.docs.map((d) => d.data().referenceId).filter(Boolean)
-    );
+    const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
     const uniqueStations = new Set(snapshot.docs.map((d) => d.data().imei));
 
     res.json({
