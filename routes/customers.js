@@ -1,4 +1,3 @@
-// routes/customerRoutes.js
 import express from "express";
 import db from "../config/firebase.js";
 import { Timestamp } from "firebase-admin/firestore";
@@ -48,11 +47,10 @@ router.get("/daily-by-imei/:imei", async (req, res) => {
       .where("imei", "==", imei)
       .where("timestamp", ">=", startTs)
       .where("timestamp", "<", endTs)
+      .where("referenceId", "!=", null) // ✅ only new rentals
       .get();
 
-    // ✅ Only include docs with referenceId
-    const filteredDocs = snapshot.docs.filter(d => d.data().referenceId);
-    const uniqueRefs = new Set(filteredDocs.map(d => d.data().referenceId));
+    const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
 
     res.json({
       imei,
@@ -76,10 +74,10 @@ router.get("/monthly/:imei", async (req, res) => {
       .where("imei", "==", imei)
       .where("timestamp", ">=", startTs)
       .where("timestamp", "<", endTs)
+      .where("referenceId", "!=", null) // ✅ only new rentals
       .get();
 
-    const filteredDocs = snapshot.docs.filter(d => d.data().referenceId);
-    const uniqueRefs = new Set(filteredDocs.map(d => d.data().referenceId));
+    const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
 
     res.json({
       stationIMEI: imei,
@@ -99,17 +97,16 @@ router.get("/monthly/:imei", async (req, res) => {
 // Daily total across all stations
 router.get("/daily-total", async (req, res) => {
   const { startTs, endTs, dateStr } = getDayBounds();
-
   try {
     const snapshot = await db
       .collection("rentals")
       .where("timestamp", ">=", startTs)
       .where("timestamp", "<", endTs)
+      .where("referenceId", "!=", null) // ✅ only new rentals
       .get();
 
-    const filteredDocs = snapshot.docs.filter(d => d.data().referenceId);
-    const uniqueRefs = new Set(filteredDocs.map(d => d.data().referenceId));
-    const uniqueStations = new Set(filteredDocs.map(d => d.data().imei));
+    const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
+    const uniqueStations = new Set(snapshot.docs.map((d) => d.data().imei));
 
     res.json({
       date: dateStr,
@@ -125,17 +122,16 @@ router.get("/daily-total", async (req, res) => {
 // Monthly total across all stations
 router.get("/monthly-total", async (req, res) => {
   const { startTs, endTs, monthKey } = getMonthBounds();
-
   try {
     const snapshot = await db
       .collection("rentals")
       .where("timestamp", ">=", startTs)
       .where("timestamp", "<", endTs)
+      .where("referenceId", "!=", null) // ✅ only new rentals
       .get();
 
-    const filteredDocs = snapshot.docs.filter(d => d.data().referenceId);
-    const uniqueRefs = new Set(filteredDocs.map(d => d.data().referenceId));
-    const uniqueStations = new Set(filteredDocs.map(d => d.data().imei));
+    const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
+    const uniqueStations = new Set(snapshot.docs.map((d) => d.data().imei));
 
     res.json({
       month: monthKey,
