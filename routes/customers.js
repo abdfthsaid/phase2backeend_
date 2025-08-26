@@ -51,7 +51,9 @@ router.get("/daily-by-imei/:imei", async (req, res) => {
       .get();
 
     // ✅ unique referenceId only
-    const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
+    const uniqueRefs = new Set(
+      snapshot.docs.map((d) => d.data().referenceId).filter(Boolean)
+    );
 
     res.json({
       imei,
@@ -77,7 +79,9 @@ router.get("/monthly/:imei", async (req, res) => {
       .where("timestamp", "<", endTs)
       .get();
 
-    const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
+    const uniqueRefs = new Set(
+      snapshot.docs.map((d) => d.data().referenceId).filter(Boolean)
+    );
 
     res.json({
       stationIMEI: imei,
@@ -104,7 +108,9 @@ router.get("/daily-total", async (req, res) => {
       .where("timestamp", "<", endTs)
       .get();
 
-    const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
+    const uniqueRefs = new Set(
+      snapshot.docs.map((d) => d.data().referenceId).filter(Boolean)
+    );
     const uniqueStations = new Set(snapshot.docs.map((d) => d.data().imei));
 
     res.json({
@@ -128,7 +134,9 @@ router.get("/monthly-total", async (req, res) => {
       .where("timestamp", "<", endTs)
       .get();
 
-    const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
+    const uniqueRefs = new Set(
+      snapshot.docs.map((d) => d.data().referenceId).filter(Boolean)
+    );
     const uniqueStations = new Set(snapshot.docs.map((d) => d.data().imei));
 
     res.json({
