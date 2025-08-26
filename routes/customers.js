@@ -5,7 +5,9 @@ import { Timestamp } from "firebase-admin/firestore";
 
 const router = express.Router();
 
-// 🧠 Helpers to compute Timestamp bounds for today/month
+/* ------------------------------------------------------------------ */
+/* 🧠 Helpers: day & month timestamp ranges                           */
+/* ------------------------------------------------------------------ */
 function getDayBounds(date = new Date()) {
   const start = new Date(date);
   start.setHours(0, 0, 0, 0);
@@ -32,10 +34,10 @@ function getMonthBounds(date = new Date()) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 📌 Station-level counts (unique customers by referenceId)          */
+/* 📌 Station-level unique customers (by referenceId)                 */
 /* ------------------------------------------------------------------ */
 
-// Daily unique customers for a station (by IMEI)
+// Daily unique customers for a station
 router.get("/daily-by-imei/:imei", async (req, res) => {
   const { imei } = req.params;
   const { startTs, endTs, dateStr } = getDayBounds();
@@ -48,20 +50,21 @@ router.get("/daily-by-imei/:imei", async (req, res) => {
       .where("timestamp", "<", endTs)
       .get();
 
+    // ✅ unique referenceId only
     const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
 
-    res.status(200).json({
+    res.json({
       imei,
       date: dateStr,
       totalCustomersToday: uniqueRefs.size,
     });
   } catch (err) {
-    console.error("❌ Error calculating daily rentals:", err);
-    res.status(500).json({ error: "Failed to fetch daily customer count" });
+    console.error("❌ daily-by-imei error:", err);
+    res.status(500).json({ error: "Failed to fetch daily customers by station" });
   }
 });
 
-// Monthly unique customers for a station (by IMEI)
+// Monthly unique customers for a station
 router.get("/monthly/:imei", async (req, res) => {
   const { imei } = req.params;
   const { startTs, endTs, monthKey } = getMonthBounds();
@@ -82,13 +85,13 @@ router.get("/monthly/:imei", async (req, res) => {
       totalCustomersThisMonth: uniqueRefs.size,
     });
   } catch (err) {
-    console.error("❌ Monthly customer error:", err);
-    res.status(500).json({ error: "Failed to fetch monthly customer count" });
+    console.error("❌ monthly/:imei error:", err);
+    res.status(500).json({ error: "Failed to fetch monthly customers by station" });
   }
 });
 
 /* ------------------------------------------------------------------ */
-/* 📌 Global totals (all stations, unique customers by referenceId)  */
+/* 📌 Global totals (all stations, unique referenceId only)           */
 /* ------------------------------------------------------------------ */
 
 // Daily total across all stations
@@ -110,8 +113,8 @@ router.get("/daily-total", async (req, res) => {
       stations: uniqueStations.size,
     });
   } catch (err) {
-    console.error("❌ Daily-total error:", err);
-    res.status(500).json({ error: "Failed to fetch daily total customers" });
+    console.error("❌ daily-total error:", err);
+    res.status(500).json({ error: "Failed to fetch daily totals" });
   }
 });
 
@@ -134,8 +137,8 @@ router.get("/monthly-total", async (req, res) => {
       stations: uniqueStations.size,
     });
   } catch (err) {
-    console.error("❌ Monthly-total error:", err);
-    res.status(500).json({ error: "Failed to fetch monthly total customers" });
+    console.error("❌ monthly-total error:", err);
+    res.status(500).json({ error: "Failed to fetch monthly totals" });
   }
 });
 
