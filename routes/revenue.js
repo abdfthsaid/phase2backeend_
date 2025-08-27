@@ -1,4 +1,3 @@
-// routes/revenue.js
 import express from "express";
 import db from "../config/firebase.js";
 import { Timestamp } from "firebase-admin/firestore";
@@ -22,12 +21,11 @@ function getUTCStartOfMonth(date = new Date()) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1, 0, 0, 0, 0));
 }
 
-/* ------------------------------------------------------------------ */
-/* 📌 DAILY REVENUE + CUSTOMER COUNT (Single Station)                 */
-/* ------------------------------------------------------------------ */
+// ✅ DAILY REVENUE FOR SINGLE STATION (by IMEI)
 router.get("/daily/:imei", async (req, res) => {
   const imei = req.params.imei;
   const stationCode = imeiToStationCode[imei];
+
   if (!stationCode) return res.status(400).json({ error: `Unknown IMEI ${imei}` });
 
   const todayUTC = getUTCStartOfDay();
@@ -38,21 +36,17 @@ router.get("/daily/:imei", async (req, res) => {
       .where("stationCode", "==", stationCode)
       .where("timestamp", ">=", Timestamp.fromDate(todayUTC))
       .where("status", "in", ["rented", "returned"])
-      .where("transactionId", "!=", null) // ✅ only real transactions
       .get();
 
     let total = 0;
     let count = 0;
-    const uniqueRefs = new Set();
 
     snapshot.forEach((doc) => {
       const data = doc.data();
-      total += parseFloat(data.revenue || 0);
-      count++;
-      if (data.referenceId) {
-        uniqueRefs.add(data.referenceId);
-      } else if (data.transactionId) {
-        uniqueRefs.add(data.transactionId); // fallback
+      const revenue = parseFloat(data.revenue || 0);
+      if (!isNaN(revenue)) {
+        total += revenue;
+        count++;
       }
     });
 
@@ -61,7 +55,6 @@ router.get("/daily/:imei", async (req, res) => {
       stationCode,
       totalRevenueToday: parseFloat(total.toFixed(2)),
       totalRentalsToday: count,
-      totalCustomersToday: uniqueRefs.size,
       date: todayUTC.toISOString().split("T")[0],
     });
   } catch (error) {
@@ -70,9 +63,7 @@ router.get("/daily/:imei", async (req, res) => {
   }
 });
 
-/* ------------------------------------------------------------------ */
-/* 📌 DAILY REVENUE + CUSTOMER COUNT (All Stations)                   */
-/* ------------------------------------------------------------------ */
+// ✅ DAILY REVENUE FOR ALL STATIONS
 router.get("/daily", async (req, res) => {
   const todayUTC = getUTCStartOfDay();
 
@@ -81,28 +72,22 @@ router.get("/daily", async (req, res) => {
       .collection("rentals")
       .where("timestamp", ">=", Timestamp.fromDate(todayUTC))
       .where("status", "in", ["rented", "returned"])
-      .where("transactionId", "!=", null) // ✅ only real transactions
       .get();
 
     let total = 0;
     let count = 0;
-    const uniqueRefs = new Set();
 
     snapshot.forEach((doc) => {
-      const data = doc.data();
-      total += parseFloat(data.revenue || 0);
-      count++;
-      if (data.referenceId) {
-        uniqueRefs.add(data.referenceId);
-      } else if (data.transactionId) {
-        uniqueRefs.add(data.transactionId);
+      const revenue = parseFloat(doc.data().revenue || 0);
+      if (!isNaN(revenue)) {
+        total += revenue;
+        count++;
       }
     });
 
     res.json({
       totalRevenueToday: parseFloat(total.toFixed(2)),
       totalRentalsToday: count,
-      totalCustomersToday: uniqueRefs.size,
       date: todayUTC.toISOString().split("T")[0],
     });
   } catch (error) {
@@ -111,12 +96,11 @@ router.get("/daily", async (req, res) => {
   }
 });
 
-/* ------------------------------------------------------------------ */
-/* 📌 MONTHLY REVENUE + CUSTOMER COUNT (Single Station)               */
-/* ------------------------------------------------------------------ */
+// ✅ MONTHLY REVENUE FOR SINGLE STATION (by IMEI)
 router.get("/monthly/:imei", async (req, res) => {
   const imei = req.params.imei;
   const stationCode = imeiToStationCode[imei];
+
   if (!stationCode) return res.status(400).json({ error: `Unknown IMEI ${imei}` });
 
   const now = new Date();
@@ -128,21 +112,16 @@ router.get("/monthly/:imei", async (req, res) => {
       .where("stationCode", "==", stationCode)
       .where("timestamp", ">=", Timestamp.fromDate(startOfMonthUTC))
       .where("status", "in", ["rented", "returned"])
-      .where("transactionId", "!=", null) // ✅ only real transactions
       .get();
 
     let total = 0;
     let count = 0;
-    const uniqueRefs = new Set();
 
     snapshot.forEach((doc) => {
-      const data = doc.data();
-      total += parseFloat(data.revenue || 0);
-      count++;
-      if (data.referenceId) {
-        uniqueRefs.add(data.referenceId);
-      } else if (data.transactionId) {
-        uniqueRefs.add(data.transactionId);
+      const revenue = parseFloat(doc.data().revenue || 0);
+      if (!isNaN(revenue)) {
+        total += revenue;
+        count++;
       }
     });
 
@@ -151,7 +130,6 @@ router.get("/monthly/:imei", async (req, res) => {
       stationCode,
       totalRevenueMonthly: parseFloat(total.toFixed(2)),
       totalRentalsThisMonth: count,
-      totalCustomersThisMonth: uniqueRefs.size,
       month: `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`,
     });
   } catch (error) {
@@ -160,9 +138,7 @@ router.get("/monthly/:imei", async (req, res) => {
   }
 });
 
-/* ------------------------------------------------------------------ */
-/* 📌 MONTHLY REVENUE + CUSTOMER COUNT (All Stations)                 */
-/* ------------------------------------------------------------------ */
+// ✅ MONTHLY REVENUE FOR ALL STATIONS
 router.get("/monthly", async (req, res) => {
   const now = new Date();
   const startOfMonthUTC = getUTCStartOfMonth(now);
@@ -172,28 +148,22 @@ router.get("/monthly", async (req, res) => {
       .collection("rentals")
       .where("timestamp", ">=", Timestamp.fromDate(startOfMonthUTC))
       .where("status", "in", ["rented", "returned"])
-      .where("transactionId", "!=", null) // ✅ only real transactions
       .get();
 
     let total = 0;
     let count = 0;
-    const uniqueRefs = new Set();
 
     snapshot.forEach((doc) => {
-      const data = doc.data();
-      total += parseFloat(data.revenue || 0);
-      count++;
-      if (data.referenceId) {
-        uniqueRefs.add(data.referenceId);
-      } else if (data.transactionId) {
-        uniqueRefs.add(data.transactionId);
+      const revenue = parseFloat(doc.data().revenue || 0);
+      if (!isNaN(revenue)) {
+        total += revenue;
+        count++;
       }
     });
 
     res.json({
       totalRevenueMonthly: parseFloat(total.toFixed(2)),
       totalRentalsThisMonth: count,
-      totalCustomersThisMonth: uniqueRefs.size,
       month: `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`,
     });
   } catch (error) {
@@ -202,4 +172,4 @@ router.get("/monthly", async (req, res) => {
   }
 });
 
-export default router;
+export default router; 
