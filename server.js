@@ -189,7 +189,7 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       waafiRes = await axios.post(WAAFI_URL, waafiPayload, {
         headers: { "Content-Type": "application/json" },
       });
-      console.log("WAAFI response:", JSON.stringify(waafiRes.data, null, 2));
+      console.log("WAAFI response:", JSON.stringify(waafiRes, null, 2));
     } catch {
       return sendResponse(
         res,
