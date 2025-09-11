@@ -312,7 +312,7 @@ setInterval(() => {
 // 🔁 Auto correct rental/station mismatches every 60 minutes
 setInterval(() => {
   console.log("⏱️ Correcting mismatches...");
-  correctMismatches();
+  // correctMismatches();
 }, 60 * 60 * 1000);
 
 // 🚀 Server start
