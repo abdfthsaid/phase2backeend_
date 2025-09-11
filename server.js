@@ -1,4 +1,4 @@
-// 📦 Dependencies
+// test to go back right
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -110,13 +110,12 @@ app.get("/", (req, res) => {
   sendResponse(res, true, { message: "🚀 Waafi backend is running!" });
 });
 
-// 💳 PAYMENT ENDPOINT — FULLY INSTRUMENTED
+// 💳 Payment + rental logging + revenue after Waafi cut + unlock battery
 app.post("/api/pay/:stationCode", async (req, res) => {
   const { stationCode } = req.params;
   const { phoneNumber, amount } = req.body;
 
   if (!phoneNumber || !amount) {
-    console.warn("⚠️ Missing phoneNumber or amount in request body");
     return sendResponse(
       res,
       false,
@@ -127,7 +126,6 @@ app.post("/api/pay/:stationCode", async (req, res) => {
 
   const imei = stationImeisByCode[stationCode];
   if (!imei) {
-    console.warn(`⚠️ Invalid stationCode received: ${stationCode}`);
     return sendResponse(
       res,
       false,
@@ -141,7 +139,6 @@ app.post("/api/pay/:stationCode", async (req, res) => {
     // Check station online status
     const statsDoc = await db.collection("station_stats").doc(imei).get();
     if (!statsDoc.exists || statsDoc.data().station_status !== "Online") {
-      console.warn(`⚠️ Station ${imei} is offline or stats missing`);
       return sendResponse(
         res,
         false,
@@ -153,7 +150,6 @@ app.post("/api/pay/:stationCode", async (req, res) => {
 
     const battery = await getAvailableBattery(imei);
     if (!battery) {
-      console.warn(`⚠️ No available battery ≥ 40% at station ${imei}`);
       return sendResponse(
         res,
         false,
@@ -189,16 +185,11 @@ app.post("/api/pay/:stationCode", async (req, res) => {
         },
       };
 
-      console.log("📡 [Waafi] Sending payment request:", JSON.stringify(waafiPayload, null, 2));
-
       waafiRes = await axios.post(WAAFI_URL, waafiPayload, {
         headers: { "Content-Type": "application/json" },
       });
-
-      console.log("✅ [Waafi] RAW RESPONSE received:", JSON.stringify(waafiRes.data, null, 2));
-
-    } catch (networkErr) {
-      console.error("❌ [Waafi] NETWORK ERROR:", networkErr.message);
+      console.log("WAAFI response:", JSON.stringify(waafiRes, null, 2));
+    } catch {
       return sendResponse(
         res,
         false,
@@ -208,61 +199,9 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       );
     }
 
-    // ✅ Validate Waafi response root exists
-    const waafiData = waafiRes.data;
-    if (!waafiData) {
-      console.error("❌ [Waafi] Returned EMPTY or NULL response body");
-      return sendResponse(
-        res,
-        false,
-        null,
-        { code: "WAAFI_RESPONSE_EMPTY", message: "Waafi returned empty response" },
-        502
-      );
-    }
-
-    // ✅ Validate 'params' exists
-    if (!waafiData.params) {
-      console.error("❌ [Waafi] Response is MISSING 'params' object. Full response:", waafiData);
-      return sendResponse(
-        res,
-        false,
-        null,
-        { code: "WAAFI_PARAMS_MISSING", message: "Waafi response missing 'params' field" },
-        502
-      );
-    }
-
-    // ✅ Extract critical fields
-    const { transactionId, issuerTransactionId, referenceId } = waafiData.params;
-
-    // ✅ Validate each critical field
-    const missingFields = [];
-    if (!transactionId) missingFields.push("transactionId");
-    if (!issuerTransactionId) missingFields.push("issuerTransactionId");
-    if (!referenceId) missingFields.push("referenceId");
-
-    if (missingFields.length > 0) {
-      console.error(`❌ [Waafi] MISSING FIELDS: [${missingFields.join(", ")}]`);
-      console.error("🔍 [Waafi] 'params' received:", waafiData.params);
-      console.error("📡 [Waafi] Full response for debugging:", waafiData);
-
-      return sendResponse(
-        res,
-        false,
-        null,
-        {
-          code: "WAAFI_FIELDS_MISSING",
-          message: `Waafi did not return required fields: ${missingFields.join(", ")}`,
-        },
-        502
-      );
-    }
-
-    // ✅ Check approval
-    const approved = waafiData.responseCode == 2001;
+    // ✅ Correct approval check
+    const approved = waafiRes.data.responseCode == 2001;
     if (!approved) {
-      console.warn("⚠️ [Waafi] Payment NOT APPROVED. Response:", waafiData);
       return sendResponse(
         res,
         false,
@@ -270,19 +209,20 @@ app.post("/api/pay/:stationCode", async (req, res) => {
         {
           code: "PAYMENT_FAILED",
           message:
-            waafiData.params?.description ||
-            waafiData.responseMsg ||
+            waafiRes.data.params?.description ||
+            waafiRes.data.responseMsg ||
             "Payment not approved",
         }
       );
     }
 
     // 🔒 Prevent duplicate rentals by transactionId
+    const { transactionId, issuerTransactionId, referenceId } = waafiRes.data.params;
     const existing = await db.collection("rentals")
       .where("transactionId", "==", transactionId)
       .get();
     if (!existing.empty) {
-      console.log("⚠️ [Waafi] Duplicate transaction, skipping:", transactionId);
+      console.log("⚠️ Duplicate Waafi transaction, skipping:", transactionId);
       return sendResponse(res, true, {
         message: "Payment already processed",
         transactionId,
@@ -320,26 +260,16 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       timestamp: new Date(),
     });
 
-    console.log(`✅ [Rental] SUCCESSFULLY logged with Waafi IDs:`, {
-      transactionId,
-      issuerTransactionId,
-      referenceId,
-    });
-
     // Unlock battery
     try {
       const unlockRes = await releaseBattery(imei, battery_id, slot_id);
-      console.log("🔓 [Battery] Unlocked successfully:", unlockRes);
-
       return sendResponse(res, true, {
         battery_id,
         slot_id,
         unlock: unlockRes,
         revenue: revenueAmount,
-        waafi: { transactionId, issuerTransactionId, referenceId },
       });
     } catch (unlockErr) {
-      console.error("❌ [Battery] Unlock FAILED, rolling back rental:", unlockErr.message);
       await rentalRef.delete(); // rollback
       return sendResponse(
         res,
@@ -350,7 +280,7 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       );
     }
   } catch (err) {
-    console.error("❌ [Server] GENERAL ERROR in /pay:", err);
+    console.error("❌ General error:", err);
     return sendResponse(
       res,
       false,
@@ -374,19 +304,17 @@ app.use("/api/chartsAll", chartsAll);
 
 // 🔁 Auto update station stats every 13 minutes
 setInterval(() => {
-  console.log("⏱️ [Cron] Updating station stats...");
-  updateStationStats().catch(err => console.error("❌ Station stats update failed:", err));
+  console.log("⏱️ Updating station stats...");
+  updateStationStats();
 }, 13 * 60 * 1000);
 
 // 🔁 Auto correct rental/station mismatches every 60 minutes
 setInterval(() => {
-  console.log("⏱️ [Cron] Correcting mismatches...");
+  console.log("⏱️ Correcting mismatches...");
   // correctMismatches();
 }, 60 * 60 * 1000);
 
 // 🚀 Server start
 app.listen(PORT, () => {
-  console.log(`✅ [Server] Running on http://localhost:${PORT}`);
-  console.log(`📡 Waafi URL: ${WAAFI_URL}`);
-  console.log(`🔋 HeyCharge Domain: ${HEYCHARGE_DOMAIN}`);
+  console.log(`✅ Server running on http://localhost:${PORT}`);
 });
