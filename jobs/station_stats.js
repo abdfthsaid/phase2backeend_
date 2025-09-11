@@ -1,4 +1,3 @@
-// 📦 jobs/updateStationStats.js
 import db from "../config/firebase.js";
 import axios from "axios";
 import dotenv from "dotenv";
@@ -16,7 +15,7 @@ const stations = [
   "WSEP161741066504",
   "WSEP161741066505",
   "WSEP161741066502",
-  "WSEP161741066503",
+  "WSEP1741066503",
 ];
 
 // Cache station metadata to reduce reads
@@ -120,52 +119,77 @@ export async function updateStationStats() {
       let overdueCount = 0;
       const nowDate = now.toDate();
 
-      // 8. Merge rental data
+      // 👇 NEW: Track which slots we've already assigned to avoid conflicts
+      const assignedSlots = new Set();
+
+      // 8. Merge rental data — FIXED
       for (const rentalDoc of rentalsSnap.docs) {
         const r = rentalDoc.data();
+        const { battery_id, slot_id } = r;
 
-        // ✅ Fix: If battery is missing but already rented again → close old rental
+        // ✅ Close duplicate battery rentals (keep latest only)
         const duplicateSnap = await db
           .collection("rentals")
-          .where("battery_id", "==", r.battery_id)
+          .where("battery_id", "==", battery_id)
           .where("status", "==", "rented")
           .orderBy("timestamp", "desc")
           .get();
 
         if (duplicateSnap.docs.length > 1) {
-          // Close all but the latest rental
-          duplicateSnap.docs.slice(1).forEach(async (d) => {
-            await d.ref.update({ status: "returned", returnedAt: now });
-            console.log(`🛑 Closed duplicate rental for ${r.battery_id}`);
-          });
+          const [latest, ...old] = duplicateSnap.docs;
+          for (const oldDoc of old) {
+            await oldDoc.ref.update({ status: "returned", returnedAt: now });
+            console.log(`🛑 Closed duplicate rental for battery ${battery_id}`);
+          }
+          // Skip if this doc is not the latest
+          if (rentalDoc.id !== latest.id) {
+            continue;
+          }
         }
 
-        if (presentIds.has(r.battery_id)) {
-          // Auto-return if battery is back inside
-          rentalDoc.ref.update({ status: "returned", returnedAt: now });
-          console.log(`↩️ Auto-returned ${r.battery_id}`);
-        } else {
-          rentedCount++;
-          // Overdue logic: $0.5 → >2h, $1 → >12h
-          const diffH = (nowDate - r.timestamp.toDate()) / 36e5;
-          if (
-            (r.amount === 0.5 && diffH > 2) ||
-            (r.amount === 1 && diffH > 12)
-          ) {
-            overdueCount++;
-          }
-          // Overlay rental
-          slotMap.set(r.slot_id, {
-            slot_id: r.slot_id,
-            battery_id: r.battery_id,
-            level: null,
-            status: "Rented",
-            rented: true,
-            phoneNumber: r.phoneNumber,
-            rentedAt: r.timestamp,
-            amount: r.amount,
-          });
+        // ✅ Auto-return if battery is physically present
+        if (presentIds.has(battery_id)) {
+          await rentalDoc.ref.update({ status: "returned", returnedAt: now });
+          console.log(`↩️ Auto-returned ${battery_id} (back in station)`);
+          continue;
         }
+
+        // ✅ Validate slot_id — must be string 1-8, and not already assigned
+        if (
+          !slot_id ||
+          typeof slot_id !== "string" ||
+          !["1", "2", "3", "4", "5", "6", "7", "8"].includes(slot_id) ||
+          assignedSlots.has(slot_id)
+        ) {
+          console.log(
+            `⚠️ Skipping rental ${rentalDoc.id}: invalid or duplicate slot_id "${slot_id}"`
+          );
+          // Optional: auto-close corrupted rentals
+          // await rentalDoc.ref.update({ status: "returned", returnedAt: now, note: "Invalid slot_id" });
+          continue;
+        }
+
+        // ✅ Assign slot + count rental
+        assignedSlots.add(slot_id);
+        rentedCount++;
+
+        // ✅ Check overdue
+        const diffH = (nowDate - r.timestamp.toDate()) / 36e5;
+        if ((r.amount === 0.5 && diffH > 2) || (r.amount === 1 && diffH > 12)) {
+          overdueCount++;
+        }
+
+        // ✅ Overlay rental onto slot
+        slotMap.set(slot_id, {
+          slot_id,
+          battery_id: r.battery_id,
+          level: null,
+          status: "Rented",
+          rented: true,
+          phoneNumber: r.phoneNumber,
+          rentedAt: r.timestamp,
+          amount: r.amount,
+        });
       }
 
       // 9. Finalize slots and counts
