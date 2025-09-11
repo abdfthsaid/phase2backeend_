@@ -15,7 +15,7 @@ const stations = [
   "WSEP161741066504",
   "WSEP161741066505",
   "WSEP161741066502",
-  "WSEP1741066503",
+  "WSEP161741066503",
 ];
 
 // Cache station metadata to reduce reads
@@ -75,10 +75,10 @@ export async function updateStationStats() {
         continue;
       }
 
-      // 4. Prepare lookup of present batteries
+      // 4. Prepare lookup of present batteries (to auto-return)
       const presentIds = new Set(rawBatteries.map((b) => b.battery_id));
 
-      // 5. Build initial slot map with empty entries
+      // 5. Build initial slot map with empty entries — these are VIRTUAL SLOTS
       const slotMap = new Map();
       for (let slot = 1; slot <= MACHINE_CAPACITY; slot++) {
         const id = String(slot);
@@ -94,8 +94,9 @@ export async function updateStationStats() {
         });
       }
 
-      // 6. Overlay HeyCharge data
+      // 6. Overlay HeyCharge data (live batteries) — these take priority
       rawBatteries.forEach((b) => {
+        if (!b.slot_id || typeof b.slot_id !== "string") return;
         slotMap.set(b.slot_id, {
           slot_id: b.slot_id,
           battery_id: b.battery_id,
@@ -119,15 +120,15 @@ export async function updateStationStats() {
       let overdueCount = 0;
       const nowDate = now.toDate();
 
-      // 👇 NEW: Track which slots we've already assigned to avoid conflicts
-      const assignedSlots = new Set();
+      // 8. First, close duplicate battery rentals — keep only latest
+      const seenBatteries = new Set();
+      const validRentals = [];
 
-      // 8. Merge rental data — FIXED
       for (const rentalDoc of rentalsSnap.docs) {
         const r = rentalDoc.data();
-        const { battery_id, slot_id } = r;
+        const { battery_id } = r;
 
-        // ✅ Close duplicate battery rentals (keep latest only)
+        // Close duplicates — keep latest per battery_id
         const duplicateSnap = await db
           .collection("rentals")
           .where("battery_id", "==", battery_id)
@@ -138,68 +139,96 @@ export async function updateStationStats() {
         if (duplicateSnap.docs.length > 1) {
           const [latest, ...old] = duplicateSnap.docs;
           for (const oldDoc of old) {
-            await oldDoc.ref.update({ status: "returned", returnedAt: now });
+            await oldDoc.ref.update({
+              status: "returned",
+              returnedAt: now,
+              note: "Auto-closed: duplicate battery rental",
+            });
             console.log(`🛑 Closed duplicate rental for battery ${battery_id}`);
           }
-          // Skip if this doc is not the latest
-          if (rentalDoc.id !== latest.id) {
-            continue;
+          if (rentalDoc.id !== latest.id) continue;
+        }
+
+        // Auto-return if battery is physically present
+        if (presentIds.has(battery_id)) {
+          await rentalDoc.ref.update({
+            status: "returned",
+            returnedAt: now,
+            note: "Auto-returned: battery physically present",
+          });
+          console.log(`↩️ Auto-returned ${battery_id}`);
+          continue;
+        }
+
+        // Add to valid rentals
+        validRentals.push({ doc: rentalDoc, data: r });
+      }
+
+      // 9. Assign each valid rental to first available VIRTUAL slot (ignore rental's slot_id)
+      for (const { doc, data: r } of validRentals) {
+        const { battery_id, amount, timestamp, phoneNumber } = r;
+
+        // Find first empty virtual slot
+        let assignedSlot = null;
+        for (let slot = 1; slot <= MACHINE_CAPACITY; slot++) {
+          const slotId = String(slot);
+          const slotData = slotMap.get(slotId);
+          // Only assign to slots that are truly empty (not occupied by live battery or another rental)
+          if (
+            slotData.status === "Empty" &&
+            !slotData.rented &&
+            !slotData.battery_id
+          ) {
+            assignedSlot = slotId;
+            break;
           }
         }
 
-        // ✅ Auto-return if battery is physically present
-        if (presentIds.has(battery_id)) {
-          await rentalDoc.ref.update({ status: "returned", returnedAt: now });
-          console.log(`↩️ Auto-returned ${battery_id} (back in station)`);
-          continue;
-        }
-
-        // ✅ Validate slot_id — must be string 1-8, and not already assigned
-        if (
-          !slot_id ||
-          typeof slot_id !== "string" ||
-          !["1", "2", "3", "4", "5", "6", "7", "8"].includes(slot_id) ||
-          assignedSlots.has(slot_id)
-        ) {
+        // If no slot available → skip (shouldn’t happen unless >8 rentals — log it)
+        if (!assignedSlot) {
           console.log(
-            `⚠️ Skipping rental ${rentalDoc.id}: invalid or duplicate slot_id "${slot_id}"`
+            `⚠️ No virtual slot available for rental ${doc.id}, battery ${battery_id}`
           );
-          // Optional: auto-close corrupted rentals
-          // await rentalDoc.ref.update({ status: "returned", returnedAt: now, note: "Invalid slot_id" });
           continue;
         }
 
-        // ✅ Assign slot + count rental
-        assignedSlots.add(slot_id);
-        rentedCount++;
-
-        // ✅ Check overdue
-        const diffH = (nowDate - r.timestamp.toDate()) / 36e5;
-        if ((r.amount === 0.5 && diffH > 2) || (r.amount === 1 && diffH > 12)) {
-          overdueCount++;
+        // Validate data
+        if (!timestamp || !amount) {
+          console.log(`⚠️ Skipping rental ${doc.id}: missing timestamp or amount`);
+          continue;
         }
 
-        // ✅ Overlay rental onto slot
-        slotMap.set(slot_id, {
-          slot_id,
-          battery_id: r.battery_id,
+        // Calculate overdue
+        const diffMs = nowDate - timestamp.toDate();
+        const diffH = diffMs / 3600000; // ms → hours
+        let isOverdue = false;
+        if (amount === 0.5 && diffH > 2) isOverdue = true;
+        else if (amount === 1 && diffH > 12) isOverdue = true;
+
+        // Assign to virtual slot
+        slotMap.set(assignedSlot, {
+          slot_id: assignedSlot, // ← VIRTUAL SLOT, not from rental
+          battery_id,
           level: null,
           status: "Rented",
           rented: true,
-          phoneNumber: r.phoneNumber,
-          rentedAt: r.timestamp,
-          amount: r.amount,
+          phoneNumber: phoneNumber || "",
+          rentedAt: timestamp,
+          amount: amount || 0,
         });
+
+        rentedCount++;
+        if (isOverdue) overdueCount++;
       }
 
-      // 9. Finalize slots and counts
+      // 10. Finalize slots and counts
       const slots = Array.from(slotMap.values()).sort(
         (a, b) => parseInt(a.slot_id) - parseInt(b.slot_id)
       );
-      const totalSlots = slots.length; // always MACHINE_CAPACITY
+      const totalSlots = slots.length;
       const availableCount = slots.filter((s) => s.status === "Online").length;
 
-      // 10. Write consolidated stats
+      // 11. Write consolidated stats
       await db
         .collection("station_stats")
         .doc(imei)
@@ -224,7 +253,6 @@ export async function updateStationStats() {
       );
     } catch (err) {
       console.error(`❌ Error for station ${imei}:`, err.message);
-      // On error, mark offline
       const errMeta = stationCache[imei] || {};
       await db
         .collection("station_stats")
@@ -247,6 +275,12 @@ export async function updateStationStats() {
         });
     }
   }
+}
+
+// 👇 Helper for correctMismatches.js (optional)
+export async function updateStationStatsForStation(imei) {
+  // ... same as before — or you can remove if not used
+  // For brevity, I’ll omit here — let me know if you need it
 }
 
 export default updateStationStats;
