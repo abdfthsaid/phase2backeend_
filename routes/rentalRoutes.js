@@ -8,7 +8,7 @@ const router = express.Router();
 // 🔐 POST: Save rental log & update daily + monthly customer stats
 
 router.post("/log", async (req, res) => {
-  console.log("📥 /log route hit:", req.body);
+  console.log("📥 /log route hit:::::::::::::::::::::::::::::::::YAAAAAB yaa kuwacay:", req.body);
 
   const { imei, battery_id, slot_id, amount, phoneNumber } = req.body;
 
