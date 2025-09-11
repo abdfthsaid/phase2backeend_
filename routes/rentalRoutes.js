@@ -7,50 +7,50 @@ const router = express.Router();
 // ✅✅
 // 🔐 POST: Save rental log & update daily + monthly customer stats
 
-router.post("/log", async (req, res) => {
-  console.log("📥 /log route hit:::::::::::::::::::::::::::::::::YAAAAAB yaa kuwacay:", req.body);
+// router.post("/log", async (req, res) => {
+//   console.log("📥 /log route hit:::::::::::::::::::::::::::::::::YAAAAAB yaa kuwacay:", req.body);
 
-  const { imei, battery_id, slot_id, amount, phoneNumber } = req.body;
+//   const { imei, battery_id, slot_id, amount, phoneNumber } = req.body;
 
-  try {
-    // 🔍 Look up station using IMEI as the document ID
-    const stationDoc = await db.collection("stations").doc(imei).get();
+//   try {
+//     // 🔍 Look up station using IMEI as the document ID
+//     const stationDoc = await db.collection("stations").doc(imei).get();
 
-    if (!stationDoc.exists) {
-      return res.status(404).json({ error: "Station not found ❌" });
-    }
+//     if (!stationDoc.exists) {
+//       return res.status(404).json({ error: "Station not found ❌" });
+//     }
 
-    // ✅ Save rental with IMEI
-    await db.collection("rentals").add({
-      stationCode: imei, // ✅ still store as stationCode field
-      imei,
-      battery_id,
-      slot_id,
-      amount,
-      phoneNumber,
-      status: "rented",
-      timestamp: Timestamp.now(),
-    });
+//     // ✅ Save rental with IMEI
+//     await db.collection("rentals").add({
+//       stationCode: imei, // ✅ still store as stationCode field
+//       imei,
+//       battery_id,
+//       slot_id,
+//       amount,
+//       phoneNumber,
+//       status: "rented",
+//       timestamp: Timestamp.now(),
+//     });
 
-    const now = new Date();
+//     const now = new Date();
 
-    // 📆 DAILY CUSTOMER COUNTER
-    const todayKey = now.toISOString().split("T")[0];
-    const dailyId = `${imei}_${todayKey}`;
-    const dailyRef = db.collection("daily_customer_stats").doc(dailyId);
+//     // 📆 DAILY CUSTOMER COUNTER
+//     const todayKey = now.toISOString().split("T")[0];
+//     const dailyId = `${imei}_${todayKey}`;
+//     const dailyRef = db.collection("daily_customer_stats").doc(dailyId);
 
-    await db.runTransaction(async (t) => {
-      const dailyDoc = await t.get(dailyRef);
-      if (dailyDoc.exists) {
-        t.update(dailyRef, { count: (dailyDoc.data().count || 0) + 1 });
-      } else {
-        t.set(dailyRef, {
-          stationCode: imei,
-          date: todayKey,
-          count: 1,
-        });
-      }
-    });
+//     await db.runTransaction(async (t) => {
+//       const dailyDoc = await t.get(dailyRef);
+//       if (dailyDoc.exists) {
+//         t.update(dailyRef, { count: (dailyDoc.data().count || 0) + 1 });
+//       } else {
+//         t.set(dailyRef, {
+//           stationCode: imei,
+//           date: todayKey,
+//           count: 1,
+//         });
+//       }
+//     });
 
     // 📅 MONTHLY CUSTOMER COUNTER
     const monthKey = `${now.getFullYear()}-${String(
