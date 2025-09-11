@@ -1,4 +1,3 @@
-// test to go back right
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -188,7 +187,7 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       waafiRes = await axios.post(WAAFI_URL, waafiPayload, {
         headers: { "Content-Type": "application/json" },
       });
-      console.log("WAAFI response:", JSON.stringify(waafiRes, null, 2));
+      console.log("WAAFI response:", JSON.stringify(waafiRes.data, null, 2));
     } catch {
       return sendResponse(
         res,
@@ -317,4 +316,4 @@ setInterval(() => {
 // 🚀 Server start
 app.listen(PORT, () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
-});
+}); 
