@@ -8,7 +8,7 @@ const router = express.Router();
 // 🔐 POST: Save rental log & update daily + monthly customer stats
 
 // router.post("/log", async (req, res) => {
-//   console.log("📥 /log route hit:::::::::::::::::::::::::::::::::YAAAAAB yaa kuwacay:", req.body);
+//   console.log("📥 /log route hit:", req.body);
 
 //   const { imei, battery_id, slot_id, amount, phoneNumber } = req.body;
 
@@ -52,12 +52,13 @@ const router = express.Router();
 //       }
 //     });
 
-   // 📅 MONTHLY CUSTOMER COUNTER
+    // 📅 MONTHLY CUSTOMER COUNTER
     const monthKey = `${now.getFullYear()}-${String(
       now.getMonth() + 1
     ).padStart(2, "0")}`;
     const monthlyId = `${imei}_${monthKey}`;
     const monthlyRef = db.collection("monthly_customer_stats").doc(monthlyId);
+
     await db.runTransaction(async (t) => {
       const monthlyDoc = await t.get(monthlyRef);
       if (monthlyDoc.exists) {
@@ -70,6 +71,7 @@ const router = express.Router();
         });
       }
     });
+
     res.status(201).json({ message: "Rental logged successfully ✅" });
   } catch (error) {
     console.error("Log Error:", error);
