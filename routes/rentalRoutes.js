@@ -71,7 +71,7 @@ const router = express.Router();
         });
       }
     });
-
+    try{
     res.status(201).json({ message: "Rental logged successfully ✅" });
   } catch (error) {
     console.error("Log Error:", error);
