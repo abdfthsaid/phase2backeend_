@@ -52,13 +52,12 @@ const router = express.Router();
 //       }
 //     });
 
-    // 📅 MONTHLY CUSTOMER COUNTER
+   // 📅 MONTHLY CUSTOMER COUNTER
     const monthKey = `${now.getFullYear()}-${String(
       now.getMonth() + 1
     ).padStart(2, "0")}`;
     const monthlyId = `${imei}_${monthKey}`;
     const monthlyRef = db.collection("monthly_customer_stats").doc(monthlyId);
-
     await db.runTransaction(async (t) => {
       const monthlyDoc = await t.get(monthlyRef);
       if (monthlyDoc.exists) {
@@ -71,7 +70,6 @@ const router = express.Router();
         });
       }
     });
-    try{
     res.status(201).json({ message: "Rental logged successfully ✅" });
   } catch (error) {
     console.error("Log Error:", error);
