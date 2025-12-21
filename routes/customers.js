@@ -15,9 +15,6 @@ function getDayBounds(date = new Date()) {
     startTs: Timestamp.fromDate(start),
     endTs: Timestamp.fromDate(end),
     dateStr: start.toISOString().split("T")[0],
-    // Also return raw Date for querying rentals stored with new Date()
-    startDate: start,
-    endDate: end,
   };
 }
 
@@ -63,7 +60,7 @@ router.get("/daily-by-imei/:imei", async (req, res) => {
     res.status(200).json({
       imei,
       date: dateStr,
-      totalCustomersToday: uniquePhones.size,
+      uniqueCustomersToday: uniquePhones.size,
       totalRentalsToday: snapshot.size,
     });
   } catch (err) {
@@ -94,7 +91,7 @@ router.get("/monthly-by-imei/:imei", async (req, res) => {
     res.json({
       imei,
       month: monthKey,
-      totalCustomersThisMonth: phones.size,
+      uniqueCustomersThisMonth: phones.size,
       totalRentalsThisMonth: snapshot.size,
     });
   } catch (err) {
@@ -131,9 +128,9 @@ router.get("/daily-total", async (req, res) => {
 
     res.json({
       date: dateStr,
-      totalCustomersToday: uniqueCustomers.size,
+      uniqueCustomersToday: uniqueCustomers.size,
       totalRentalsToday: snapshot.size,
-      stations: stationSet.size,
+      stationsActive: stationSet.size,
     });
   } catch (err) {
     console.error("❌ Daily-total error:", err);
@@ -165,46 +162,13 @@ router.get("/monthly-total", async (req, res) => {
 
     res.json({
       month: monthKey,
-      totalCustomersThisMonth: uniqueCustomers.size,
+      uniqueCustomersThisMonth: uniqueCustomers.size,
       totalRentalsThisMonth: snapshot.size,
-      stations: stationSet.size,
+      stationsActive: stationSet.size,
     });
   } catch (err) {
     console.error("❌ Monthly-total error:", err);
     res.status(500).json({ error: "Failed to fetch monthly totals" });
-  }
-});
-
-// 🔍 DEBUG: Check today's customer data
-router.get("/debug/daily", async (req, res) => {
-  const { startTs, dateStr } = getDayBounds();
-  try {
-    const snapshot = await db
-      .collection("rentals")
-      .where("timestamp", ">=", startTs)
-      .where("status", "in", ["rented", "returned"])
-      .get();
-
-    const rentals = [];
-    snapshot.forEach((doc) => {
-      const data = doc.data();
-      rentals.push({
-        id: doc.id,
-        phoneNumber: data.phoneNumber,
-        imei: data.imei,
-        status: data.status,
-        timestamp: data.timestamp,
-      });
-    });
-
-    res.json({
-      date: dateStr,
-      totalRentals: snapshot.size,
-      rentals: rentals.slice(0, 10),
-    });
-  } catch (err) {
-    console.error("❌ Debug error:", err);
-    res.status(500).json({ error: "Debug failed" });
   }
 });
 
