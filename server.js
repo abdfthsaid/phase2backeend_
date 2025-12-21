@@ -6,10 +6,11 @@ import axios from "axios";
 import cors from "cors";
 import bodyParser from "body-parser";
 import { v4 as uuidv4 } from "uuid";
+import { Timestamp } from "firebase-admin/firestore";
 
 // 🔗 Route imports
 import stationRoutes from "./routes/stationRoutes.js";
-// import rentalRoutes from "./routes/rentalRoutes.js";
+import rentalRoutes from "./routes/rentalRoutes.js";
 import statsRoutes from "./routes/statsRoutes.js";
 import updateStationStats from "./jobs/station_stats.js";
 import customerRoutes from "./routes/customers.js";
@@ -182,9 +183,9 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       battery_id,
       slot_id,
       phoneNumber,
-      amount,
+      amount: parseFloat(amount) || 0,
       status: "rented",
-      timestamp: new Date(),
+      timestamp: Timestamp.now(),
     });
 
     // 🔓 Step 3: Unlock battery
@@ -213,7 +214,7 @@ app.post("/api/pay/:stationCode", async (req, res) => {
 
 // 📦 Routes
 app.use("/api/stations", stationRoutes);
-// app.use("/api/rentals", rentalRoutes);
+app.use("/api/rentals", rentalRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/revenue", revenueRoutes);
@@ -234,4 +235,4 @@ app.listen(PORT, () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
 });
 
-// god makes....
+// god makes
