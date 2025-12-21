@@ -5,145 +5,206 @@ import { Timestamp } from "firebase-admin/firestore";
 
 const router = express.Router();
 
-/* ------------------------------------------------------------------ */
-/* 🧠 Helpers: day & month timestamp ranges (UTC+3)                  */
-/* ------------------------------------------------------------------ */
-const TIMEZONE_OFFSET_MINUTES = 3 * 60; // UTC+3
-
+// 🧠 Helpers to compute Timestamp bounds for today/month
 function getDayBounds(date = new Date()) {
   const start = new Date(date);
   start.setHours(0, 0, 0, 0);
-  start.setMinutes(start.getMinutes() - TIMEZONE_OFFSET_MINUTES); // convert to UTC
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
   return {
     startTs: Timestamp.fromDate(start),
     endTs: Timestamp.fromDate(end),
     dateStr: start.toISOString().split("T")[0],
+    // Also return raw Date for querying rentals stored with new Date()
+    startDate: start,
+    endDate: end,
   };
 }
 
 function getMonthBounds(date = new Date()) {
   const start = new Date(date.getFullYear(), date.getMonth(), 1);
-  start.setMinutes(start.getMinutes() - TIMEZONE_OFFSET_MINUTES); // convert to UTC
   const end = new Date(date.getFullYear(), date.getMonth() + 1, 1);
-  end.setMinutes(end.getMinutes() - TIMEZONE_OFFSET_MINUTES); // convert to UTC
   return {
     startTs: Timestamp.fromDate(start),
     endTs: Timestamp.fromDate(end),
-    monthKey: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
+    monthKey: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(
+      2,
+      "0"
+    )}`,
   };
 }
 
 /* ------------------------------------------------------------------ */
-/* 📌 Station-level unique customers (by referenceId)                 */
+/* 📌 Station-level counts                                             */
 /* ------------------------------------------------------------------ */
 
-// Daily unique customers for a station
+// ✅ Daily UNIQUE customer count for one station (by IMEI)
 router.get("/daily-by-imei/:imei", async (req, res) => {
   const { imei } = req.params;
-  const { startTs, endTs, dateStr } = getDayBounds();
+  const { startTs, dateStr } = getDayBounds();
+
+  try {
+    // Query rentals from today onwards with valid status
+    const snapshot = await db
+      .collection("rentals")
+      .where("imei", "==", imei)
+      .where("timestamp", ">=", startTs)
+      .where("status", "in", ["rented", "returned"])
+      .get();
+
+    const uniquePhones = new Set();
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      if (data.phoneNumber) {
+        uniquePhones.add(data.phoneNumber);
+      }
+    });
+
+    res.status(200).json({
+      imei,
+      date: dateStr,
+      totalCustomersToday: uniquePhones.size,
+      totalRentalsToday: snapshot.size,
+    });
+  } catch (err) {
+    console.error("❌ Error calculating daily rentals:", err);
+    res.status(500).json({ error: "Failed to fetch daily customer count" });
+  }
+});
+
+// ✅ Monthly UNIQUE customer count for one station (by IMEI)
+router.get("/monthly-by-imei/:imei", async (req, res) => {
+  const { imei } = req.params;
+  const { startTs, monthKey } = getMonthBounds();
 
   try {
     const snapshot = await db
       .collection("rentals")
       .where("imei", "==", imei)
       .where("timestamp", ">=", startTs)
-      .where("timestamp", "<", endTs)
-      .where("referenceId", "!=", null) // only new rentals
+      .where("status", "in", ["rented", "returned"])
       .get();
 
-    const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
+    const phones = new Set();
+    snapshot.forEach((doc) => {
+      const num = doc.data().phoneNumber;
+      if (num) phones.add(num);
+    });
 
     res.json({
       imei,
-      date: dateStr,
-      totalCustomersToday: uniqueRefs.size,
-    });
-  } catch (err) {
-    console.error("❌ daily-by-imei error:", err);
-    res.status(500).json({ error: "Failed to fetch daily customers by station" });
-  }
-});
-
-// Monthly unique customers for a station
-router.get("/monthly/:imei", async (req, res) => {
-  const { imei } = req.params;
-  const { startTs, endTs, monthKey } = getMonthBounds();
-
-  try {
-    const snapshot = await db
-      .collection("rentals")
-      .where("imei", "==", imei)
-      .where("timestamp", ">=", startTs)
-      .where("timestamp", "<", endTs)
-      .where("referenceId", "!=", null) // only new rentals
-      .get();
-
-    const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
-
-    res.json({
-      stationIMEI: imei,
       month: monthKey,
-      totalCustomersThisMonth: uniqueRefs.size,
+      totalCustomersThisMonth: phones.size,
+      totalRentalsThisMonth: snapshot.size,
     });
   } catch (err) {
-    console.error("❌ monthly/:imei error:", err);
-    res.status(500).json({ error: "Failed to fetch monthly customers by station" });
+    console.error("❌ Monthly customer error:", err);
+    res.status(500).json({ error: "Failed to fetch monthly customer count" });
   }
 });
 
 /* ------------------------------------------------------------------ */
-/* 📌 Global totals (all stations, unique referenceId only)           */
+/* 📌 Global totals (all stations)                                    */
 /* ------------------------------------------------------------------ */
 
-// Daily total across all stations
+// ✅ Daily total across ALL stations
 router.get("/daily-total", async (req, res) => {
-  const { startTs, endTs, dateStr } = getDayBounds();
+  const { startTs, dateStr } = getDayBounds();
   try {
     const snapshot = await db
       .collection("rentals")
       .where("timestamp", ">=", startTs)
-      .where("timestamp", "<", endTs)
-      .where("referenceId", "!=", null) // only new rentals
+      .where("status", "in", ["rented", "returned"])
       .get();
 
-    const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
-    const uniqueStations = new Set(snapshot.docs.map((d) => d.data().imei));
+    const uniqueCustomers = new Set();
+    const stationSet = new Set();
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      if (data.phoneNumber) {
+        uniqueCustomers.add(data.phoneNumber);
+      }
+      if (data.imei) {
+        stationSet.add(data.imei);
+      }
+    });
 
     res.json({
       date: dateStr,
-      totalCustomersToday: uniqueRefs.size,
-      stations: uniqueStations.size,
+      totalCustomersToday: uniqueCustomers.size,
+      totalRentalsToday: snapshot.size,
+      stations: stationSet.size,
     });
   } catch (err) {
-    console.error("❌ daily-total error:", err);
+    console.error("❌ Daily-total error:", err);
     res.status(500).json({ error: "Failed to fetch daily totals" });
   }
 });
 
-// Monthly total across all stations
+// ✅ Monthly total across ALL stations
 router.get("/monthly-total", async (req, res) => {
-  const { startTs, endTs, monthKey } = getMonthBounds();
+  const { startTs, monthKey } = getMonthBounds();
   try {
     const snapshot = await db
       .collection("rentals")
       .where("timestamp", ">=", startTs)
-      .where("timestamp", "<", endTs)
-      .where("referenceId", "!=", null) // only new rentals
+      .where("status", "in", ["rented", "returned"])
       .get();
 
-    const uniqueRefs = new Set(snapshot.docs.map((d) => d.data().referenceId));
-    const uniqueStations = new Set(snapshot.docs.map((d) => d.data().imei));
+    const uniqueCustomers = new Set();
+    const stationSet = new Set();
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      if (data.phoneNumber) {
+        uniqueCustomers.add(data.phoneNumber);
+      }
+      if (data.imei) {
+        stationSet.add(data.imei);
+      }
+    });
 
     res.json({
       month: monthKey,
-      totalCustomersThisMonth: uniqueRefs.size,
-      stations: uniqueStations.size,
+      totalCustomersThisMonth: uniqueCustomers.size,
+      totalRentalsThisMonth: snapshot.size,
+      stations: stationSet.size,
     });
   } catch (err) {
-    console.error("❌ monthly-total error:", err);
+    console.error("❌ Monthly-total error:", err);
     res.status(500).json({ error: "Failed to fetch monthly totals" });
+  }
+});
+
+// 🔍 DEBUG: Check today's customer data
+router.get("/debug/daily", async (req, res) => {
+  const { startTs, dateStr } = getDayBounds();
+  try {
+    const snapshot = await db
+      .collection("rentals")
+      .where("timestamp", ">=", startTs)
+      .where("status", "in", ["rented", "returned"])
+      .get();
+
+    const rentals = [];
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      rentals.push({
+        id: doc.id,
+        phoneNumber: data.phoneNumber,
+        imei: data.imei,
+        status: data.status,
+        timestamp: data.timestamp,
+      });
+    });
+
+    res.json({
+      date: dateStr,
+      totalRentals: snapshot.size,
+      rentals: rentals.slice(0, 10),
+    });
+  } catch (err) {
+    console.error("❌ Debug error:", err);
+    res.status(500).json({ error: "Debug failed" });
   }
 });
 
