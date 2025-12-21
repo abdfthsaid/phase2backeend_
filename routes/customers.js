@@ -38,14 +38,14 @@ function getMonthBounds(date = new Date()) {
 // ✅ Daily UNIQUE customer count for one station (by IMEI)
 router.get("/daily-by-imei/:imei", async (req, res) => {
   const { imei } = req.params;
-  const { startTs, endTs, dateStr } = getDayBounds();
+  const { startTs, dateStr } = getDayBounds();
 
   try {
     const snapshot = await db
       .collection("rentals")
       .where("imei", "==", imei)
       .where("timestamp", ">=", startTs)
-      .where("timestamp", "<", endTs) // use < endTs, not <=
+      .where("status", "in", ["rented", "returned"])
       .get();
 
     const uniquePhones = new Set();
@@ -59,8 +59,8 @@ router.get("/daily-by-imei/:imei", async (req, res) => {
     res.status(200).json({
       imei,
       date: dateStr,
-      uniqueCustomersToday: uniquePhones.size,
-      totalRentalsToday: snapshot.size, // 👈 raw count
+      totalCustomersToday: uniquePhones.size,
+      totalRentalsToday: snapshot.size,
     });
   } catch (err) {
     console.error("❌ Error calculating daily rentals:", err);
@@ -71,14 +71,14 @@ router.get("/daily-by-imei/:imei", async (req, res) => {
 // ✅ Monthly UNIQUE customer count for one station (by IMEI)
 router.get("/monthly-by-imei/:imei", async (req, res) => {
   const { imei } = req.params;
-  const { startTs, endTs, monthKey } = getMonthBounds();
+  const { startTs, monthKey } = getMonthBounds();
 
   try {
     const snapshot = await db
       .collection("rentals")
       .where("imei", "==", imei)
       .where("timestamp", ">=", startTs)
-      .where("timestamp", "<", endTs)
+      .where("status", "in", ["rented", "returned"])
       .get();
 
     const phones = new Set();
@@ -90,8 +90,8 @@ router.get("/monthly-by-imei/:imei", async (req, res) => {
     res.json({
       imei,
       month: monthKey,
-      uniqueCustomersThisMonth: phones.size,
-      totalRentalsThisMonth: snapshot.size, // 👈 raw count
+      totalCustomersThisMonth: phones.size,
+      totalRentalsThisMonth: snapshot.size,
     });
   } catch (err) {
     console.error("❌ Monthly customer error:", err);
@@ -105,26 +105,27 @@ router.get("/monthly-by-imei/:imei", async (req, res) => {
 
 // ✅ Daily total across ALL stations
 router.get("/daily-total", async (req, res) => {
-  const { startTs, endTs, dateStr } = getDayBounds();
+  const { startTs, dateStr } = getDayBounds();
   try {
     const snapshot = await db
       .collection("rentals")
       .where("timestamp", ">=", startTs)
-      .where("timestamp", "<", endTs)
+      .where("status", "in", ["rented", "returned"])
       .get();
 
     const uniqueCustomers = new Set();
+    const stationSet = new Set();
     snapshot.forEach((doc) => {
-      const num = doc.data().phoneNumber;
-      const imei = doc.data().imei;
-      if (num && imei) uniqueCustomers.add(`${imei}::${num}`);
+      const data = doc.data();
+      if (data.phoneNumber) uniqueCustomers.add(data.phoneNumber);
+      if (data.imei) stationSet.add(data.imei);
     });
 
     res.json({
       date: dateStr,
-      uniqueCustomersToday: uniqueCustomers.size,
-      totalRentalsToday: snapshot.size, // 👈 raw doc count
-      stationsActive: new Set(snapshot.docs.map((d) => d.data().imei)).size,
+      totalCustomersToday: uniqueCustomers.size,
+      totalRentalsToday: snapshot.size,
+      stations: stationSet.size,
     });
   } catch (err) {
     console.error("❌ Daily-total error:", err);
@@ -134,26 +135,27 @@ router.get("/daily-total", async (req, res) => {
 
 // ✅ Monthly total across ALL stations
 router.get("/monthly-total", async (req, res) => {
-  const { startTs, endTs, monthKey } = getMonthBounds();
+  const { startTs, monthKey } = getMonthBounds();
   try {
     const snapshot = await db
       .collection("rentals")
       .where("timestamp", ">=", startTs)
-      .where("timestamp", "<", endTs)
+      .where("status", "in", ["rented", "returned"])
       .get();
 
     const uniqueCustomers = new Set();
+    const stationSet = new Set();
     snapshot.forEach((doc) => {
-      const num = doc.data().phoneNumber;
-      const imei = doc.data().imei;
-      if (num && imei) uniqueCustomers.add(`${imei}::${num}`);
+      const data = doc.data();
+      if (data.phoneNumber) uniqueCustomers.add(data.phoneNumber);
+      if (data.imei) stationSet.add(data.imei);
     });
 
     res.json({
       month: monthKey,
-      uniqueCustomersThisMonth: uniqueCustomers.size,
-      totalRentalsThisMonth: snapshot.size, // 👈 raw doc count
-      stationsActive: new Set(snapshot.docs.map((d) => d.data().imei)).size,
+      totalCustomersThisMonth: uniqueCustomers.size,
+      totalRentalsThisMonth: snapshot.size,
+      stations: stationSet.size,
     });
   } catch (err) {
     console.error("❌ Monthly-total error:", err);
