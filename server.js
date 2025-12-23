@@ -230,9 +230,9 @@ setInterval(() => {
   updateStationStats();
 }, 15 * 60 * 1000);
 
-// 🧹 STARTUP CLEANUP: Delete ALL today's duplicates (Dec 23, 2025)
-async function cleanupTodayDuplicates() {
-  console.log("🧹 Running startup cleanup - deleting today's duplicates...");
+// 🧹 STARTUP CLEANUP: Delete ALL today's rentals (Dec 23, 2025)
+async function cleanupTodayRentals() {
+  console.log("🧹 Running startup cleanup - deleting ALL today's rentals...");
 
   // Today's date range (Dec 23, 2025 UTC+3)
   const todayStart = new Date("2025-12-23T00:00:00.000+03:00");
@@ -250,38 +250,16 @@ async function cleanupTodayDuplicates() {
       return;
     }
 
-    console.log(`📊 Found ${todaySnapshot.size} rentals today`);
-
-    // Group by phoneNumber
-    const byPhone = new Map();
-    todaySnapshot.forEach((doc) => {
-      const data = doc.data();
-      const phone = data.phoneNumber || "unknown";
-      if (!byPhone.has(phone)) byPhone.set(phone, []);
-      byPhone.get(phone).push({
-        id: doc.id,
-        ref: doc.ref,
-        data: data,
-        timestamp: data.timestamp?.toDate?.() || new Date(0),
-      });
-    });
+    console.log(`📊 Found ${todaySnapshot.size} rentals today - DELETING ALL`);
 
     let deletedCount = 0;
-    for (const [phone, rentals] of byPhone) {
-      if (rentals.length <= 1) continue;
-
-      // Sort by timestamp ascending (oldest first)
-      rentals.sort((a, b) => a.timestamp - b.timestamp);
-
-      // Keep first, DELETE the rest
-      for (let i = 1; i < rentals.length; i++) {
-        await rentals[i].ref.delete();
-        deletedCount++;
-        console.log(`🗑️ Deleted duplicate: ${rentals[i].id} (${phone})`);
-      }
+    for (const doc of todaySnapshot.docs) {
+      await doc.ref.delete();
+      deletedCount++;
+      console.log(`🗑️ Deleted: ${doc.id}`);
     }
 
-    console.log(`✅ Cleanup complete! Deleted ${deletedCount} duplicates`);
+    console.log(`✅ Cleanup complete! Deleted ${deletedCount} rentals`);
   } catch (err) {
     console.error("❌ Cleanup error:", err.message);
   }
@@ -292,7 +270,7 @@ app.listen(PORT, async () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
 
   // Run cleanup on startup
-  await cleanupTodayDuplicates();
+  await cleanupTodayRentals();
 });
 
 // god makes
