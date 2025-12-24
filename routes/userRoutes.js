@@ -1,5 +1,9 @@
 import express from "express";
+import jwt from "jsonwebtoken";
 import db from "../config/firebase.js";
+
+const JWT_SECRET = process.env.JWT_SECRET || "danab_power_secret_key_2024";
+const TOKEN_EXPIRY = "1h"; // 1 hour
 
 const router = express.Router();
 
@@ -245,9 +249,22 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid username or password ❌" });
     }
 
-    // Successful login — you can also add token generation here later
+    // Generate JWT token with 4-hour expiry
+    const tokenPayload = {
+      id: userDoc.id,
+      username: userData.username,
+      role: userData.role,
+    };
+
+    const token = jwt.sign(tokenPayload, JWT_SECRET, {
+      expiresIn: TOKEN_EXPIRY,
+    });
+    const expiresAt = Date.now() + 1 * 60 * 60 * 1000; // 1 hour from now
+
     res.json({
       message: "Login successful ✅",
+      token,
+      expiresAt,
       user: {
         id: userDoc.id,
         username: userData.username,
