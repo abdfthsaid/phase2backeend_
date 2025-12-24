@@ -121,15 +121,25 @@ app.post("/api/pay/:stationCode", async (req, res) => {
   }
 
   try {
-    // ✅ Check station online status before proceeding
-    // const statsDoc = await db.collection("station_stats").doc(imei).get();
-    // if (!statsDoc.exists) {
-    //   return res.status(404).json({ error: "Station stats not found ❌" });
-    // }
-    // const isOnline = statsDoc.data().station_status === "Online";
-    // if (!isOnline) {
-    //   return res.status(403).json({ error: "Station is currently offline ⛔" });
-    // }
+    // 🛡️ DUPLICATE PREVENTION: Check if phone already has active rental today
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const existingRental = await db
+      .collection("rentals")
+      .where("phoneNumber", "==", phoneNumber)
+      .where("status", "==", "rented")
+      .where("timestamp", ">=", Timestamp.fromDate(today))
+      .limit(1)
+      .get();
+
+    if (!existingRental.empty) {
+      console.log(
+        `⚠️ Duplicate blocked: ${phoneNumber} already has active rental`
+      );
+      return res.status(400).json({
+        error: "You already have an active rental. Please return it first.",
+      });
+    }
 
     const battery = await getAvailableBattery(imei);
     if (!battery) {
@@ -137,6 +147,21 @@ app.post("/api/pay/:stationCode", async (req, res) => {
     }
 
     const { battery_id, slot_id } = battery;
+
+    // 🛡️ DUPLICATE PREVENTION: Check if this battery is already rented
+    const batteryRented = await db
+      .collection("rentals")
+      .where("battery_id", "==", battery_id)
+      .where("status", "==", "rented")
+      .limit(1)
+      .get();
+
+    if (!batteryRented.empty) {
+      console.log(`⚠️ Duplicate blocked: Battery ${battery_id} already rented`);
+      return res.status(400).json({
+        error: "This battery is already rented. Please try again.",
+      });
+    }
 
     // 🔐 Step 1: WAAFI payment request
     const waafiPayload = {
@@ -163,7 +188,6 @@ app.post("/api/pay/:stationCode", async (req, res) => {
 
     const waafiRes = await axios.post(WAAFI_URL, waafiPayload, {
       headers: { "Content-Type": "application/json" },
-      // No timeout for WAAFI
     });
 
     const approved =
@@ -171,19 +195,9 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       waafiRes.data.params?.state === "APPROVED";
 
     if (!approved) {
-      // Get WAAFI error message
-      const waafiMessage =
-        waafiRes.data.responseMsg ||
-        waafiRes.data.params?.description ||
-        "Payment not approved";
-      const waafiCode = waafiRes.data.responseCode || "UNKNOWN";
-
       return res.status(400).json({
-        error: {
-          code: "PAYMENT_FAILED",
-          message: waafiMessage,
-          waafiCode: waafiCode,
-        },
+        error: "Payment not approved ❌",
+        waafiResponse: waafiRes.data,
       });
     }
 

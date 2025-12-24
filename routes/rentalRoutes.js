@@ -79,4 +79,109 @@ router.post("/log", async (req, res) => {
   }
 });
 
+// 🔍 DEBUG: Check today's rentals for duplicates/issues
+router.get("/debug/today", async (req, res) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  try {
+    const snapshot = await db
+      .collection("rentals")
+      .where("timestamp", ">=", Timestamp.fromDate(today))
+      .get();
+
+    const rentals = [];
+    const phoneCount = {};
+    const batteryCount = {};
+    let duplicatePhones = 0;
+    let duplicateBatteries = 0;
+
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      rentals.push({
+        id: doc.id,
+        phone: data.phoneNumber,
+        battery: data.battery_id,
+        slot: data.slot_id,
+        amount: data.amount,
+        status: data.status,
+        station: data.stationCode,
+      });
+
+      // Count phone occurrences
+      if (data.phoneNumber) {
+        phoneCount[data.phoneNumber] = (phoneCount[data.phoneNumber] || 0) + 1;
+      }
+      // Count battery occurrences
+      if (data.battery_id) {
+        batteryCount[data.battery_id] =
+          (batteryCount[data.battery_id] || 0) + 1;
+      }
+    });
+
+    // Find duplicates
+    const duplicatePhonesList = Object.entries(phoneCount)
+      .filter(([_, count]) => count > 1)
+      .map(([phone, count]) => ({ phone, count }));
+
+    const duplicateBatteriesList = Object.entries(batteryCount)
+      .filter(([_, count]) => count > 1)
+      .map(([battery, count]) => ({ battery, count }));
+
+    res.json({
+      date: today.toISOString().split("T")[0],
+      totalRentals: snapshot.size,
+      uniquePhones: Object.keys(phoneCount).length,
+      uniqueBatteries: Object.keys(batteryCount).length,
+      duplicatePhones: duplicatePhonesList,
+      duplicateBatteries: duplicateBatteriesList,
+      rentals: rentals.slice(0, 20), // First 20
+    });
+  } catch (error) {
+    console.error("❌ Debug error:", error);
+    res.status(500).json({ error: "Debug failed ❌" });
+  }
+});
+
+// 🧹 CLEANUP: Delete duplicate rentals (keeps first, deletes rest)
+router.delete("/cleanup/duplicates", async (req, res) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  try {
+    const snapshot = await db
+      .collection("rentals")
+      .where("timestamp", ">=", Timestamp.fromDate(today))
+      .orderBy("timestamp", "asc")
+      .get();
+
+    const seenBatteries = new Set();
+    const toDelete = [];
+
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      const key = `${data.battery_id}_${data.stationCode}`;
+
+      if (seenBatteries.has(key)) {
+        toDelete.push(doc.id);
+      } else {
+        seenBatteries.add(key);
+      }
+    });
+
+    // Delete duplicates
+    for (const id of toDelete) {
+      await db.collection("rentals").doc(id).delete();
+    }
+
+    res.json({
+      message: `Deleted ${toDelete.length} duplicate rentals`,
+      deletedIds: toDelete,
+    });
+  } catch (error) {
+    console.error("❌ Cleanup error:", error);
+    res.status(500).json({ error: "Cleanup failed ❌" });
+  }
+});
+
 export default router;
