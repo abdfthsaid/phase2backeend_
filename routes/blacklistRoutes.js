@@ -57,37 +57,35 @@ router.post("/", async (req, res) => {
   }
 });
 
-// 🚫 CHECK if phone number is blacklisted (checks multiple formats)
+// 🚫 CHECK if phone number is blacklisted (checks ALL blacklist entries)
 router.get("/check/:phoneNumber", async (req, res) => {
   const { phoneNumber } = req.params;
 
-  // Generate all possible phone number formats to check
-  const cleanNumber = phoneNumber.replace(/\D/g, ""); // Remove non-digits
-  const formats = [
-    phoneNumber,
-    cleanNumber,
-    `+252${cleanNumber}`,
-    `252${cleanNumber}`,
-    `0${cleanNumber}`, // Add leading 0 (061...)
-    cleanNumber.startsWith("252") ? cleanNumber.slice(3) : null,
-    cleanNumber.startsWith("0") ? cleanNumber.slice(1) : null,
-  ].filter(Boolean);
+  // Clean the input phone number - get just digits
+  const inputDigits = phoneNumber.replace(/\D/g, "");
+  // Get last 9 digits (core number without country code)
+  const inputCore = inputDigits.slice(-9);
 
-  console.log(`🔍 Checking blacklist for: ${phoneNumber}`);
-  console.log(`🔍 Formats to check:`, formats);
+  console.log(`🔍 Checking blacklist for: ${phoneNumber}, core: ${inputCore}`);
 
   try {
-    // Check all formats
-    for (const format of formats) {
-      const snapshot = await db
-        .collection("blacklist")
-        .where("phoneNumber", "==", format)
-        .get();
+    // Get ALL blacklist entries and compare
+    const snapshot = await db.collection("blacklist").get();
 
-      console.log(`🔍 Checking format "${format}": found=${!snapshot.empty}`);
+    for (const doc of snapshot.docs) {
+      const blacklistedPhone = doc.data().phoneNumber || "";
+      // Clean blacklisted phone - get just digits
+      const blacklistDigits = blacklistedPhone.replace(/\D/g, "");
+      // Get last 9 digits
+      const blacklistCore = blacklistDigits.slice(-9);
 
-      if (!snapshot.empty) {
-        console.log(`🚫 Blacklisted found: ${format}`);
+      console.log(
+        `🔍 Comparing: input="${inputCore}" vs blacklist="${blacklistCore}" (${blacklistedPhone})`
+      );
+
+      // Compare core numbers (last 9 digits)
+      if (inputCore === blacklistCore && inputCore.length >= 8) {
+        console.log(`🚫 Blacklisted found! ${blacklistedPhone}`);
         return res.json({ phoneNumber, isBlacklisted: true });
       }
     }
