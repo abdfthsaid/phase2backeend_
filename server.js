@@ -148,22 +148,7 @@ app.post("/api/pay/:stationCode", async (req, res) => {
 
     const { battery_id, slot_id } = battery;
 
-    // 🛡️ DUPLICATE PREVENTION: Check if this battery is already rented
-    const batteryRented = await db
-      .collection("rentals")
-      .where("battery_id", "==", battery_id)
-      .where("status", "==", "rented")
-      .limit(1)
-      .get();
-
-    if (!batteryRented.empty) {
-      console.log(`⚠️ Duplicate blocked: Battery ${battery_id} already rented`);
-      return res.status(400).json({
-        error: "This battery is already rented. Please try again.",
-      });
-    }
-
-    // 🔐 Step 1: WAAFI payment request
+    //  Step 1: WAAFI payment request
     const waafiPayload = {
       schemaVersion: "1.0",
       requestId: uuidv4(),
