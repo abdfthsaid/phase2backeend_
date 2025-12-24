@@ -163,6 +163,7 @@ app.post("/api/pay/:stationCode", async (req, res) => {
 
     const waafiRes = await axios.post(WAAFI_URL, waafiPayload, {
       headers: { "Content-Type": "application/json" },
+      // No timeout for WAAFI
     });
 
     const approved =
@@ -170,9 +171,19 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       waafiRes.data.params?.state === "APPROVED";
 
     if (!approved) {
+      // Get WAAFI error message
+      const waafiMessage =
+        waafiRes.data.responseMsg ||
+        waafiRes.data.params?.description ||
+        "Payment not approved";
+      const waafiCode = waafiRes.data.responseCode || "UNKNOWN";
+
       return res.status(400).json({
-        error: "Payment not approved ❌",
-        waafiResponse: waafiRes.data,
+        error: {
+          code: "PAYMENT_FAILED",
+          message: waafiMessage,
+          waafiCode: waafiCode,
+        },
       });
     }
 
