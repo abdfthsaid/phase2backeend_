@@ -73,6 +73,9 @@ router.get("/check/:phoneNumber", async (req, res) => {
     cleanNumber.startsWith("0") ? cleanNumber.slice(1) : null,
   ].filter(Boolean);
 
+  console.log(`🔍 Checking blacklist for: ${phoneNumber}`);
+  console.log(`🔍 Formats to check:`, formats);
+
   try {
     // Check all formats
     for (const format of formats) {
@@ -81,12 +84,15 @@ router.get("/check/:phoneNumber", async (req, res) => {
         .where("phoneNumber", "==", format)
         .get();
 
+      console.log(`🔍 Checking format "${format}": found=${!snapshot.empty}`);
+
       if (!snapshot.empty) {
         console.log(`🚫 Blacklisted found: ${format}`);
         return res.json({ phoneNumber, isBlacklisted: true });
       }
     }
 
+    console.log(`✅ Not blacklisted: ${phoneNumber}`);
     res.json({ phoneNumber, isBlacklisted: false });
   } catch (err) {
     console.error("❌ Error checking blacklist:", err);
