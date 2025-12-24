@@ -57,18 +57,37 @@ router.post("/", async (req, res) => {
   }
 });
 
-// 🚫 CHECK if phone number is blacklisted
+// 🚫 CHECK if phone number is blacklisted (checks multiple formats)
 router.get("/check/:phoneNumber", async (req, res) => {
   const { phoneNumber } = req.params;
 
-  try {
-    const snapshot = await db
-      .collection("blacklist")
-      .where("phoneNumber", "==", phoneNumber)
-      .get();
+  // Generate all possible phone number formats to check
+  const cleanNumber = phoneNumber.replace(/\D/g, ""); // Remove non-digits
+  const formats = [
+    phoneNumber,
+    cleanNumber,
+    `+252${cleanNumber}`,
+    `252${cleanNumber}`,
+    `0${cleanNumber}`, // Add leading 0 (061...)
+    cleanNumber.startsWith("252") ? cleanNumber.slice(3) : null,
+    cleanNumber.startsWith("0") ? cleanNumber.slice(1) : null,
+  ].filter(Boolean);
 
-    const isBlacklisted = !snapshot.empty;
-    res.json({ phoneNumber, isBlacklisted });
+  try {
+    // Check all formats
+    for (const format of formats) {
+      const snapshot = await db
+        .collection("blacklist")
+        .where("phoneNumber", "==", format)
+        .get();
+
+      if (!snapshot.empty) {
+        console.log(`🚫 Blacklisted found: ${format}`);
+        return res.json({ phoneNumber, isBlacklisted: true });
+      }
+    }
+
+    res.json({ phoneNumber, isBlacklisted: false });
   } catch (err) {
     console.error("❌ Error checking blacklist:", err);
     res.status(500).json({ error: err.message });
