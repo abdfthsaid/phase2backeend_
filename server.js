@@ -10,7 +10,7 @@ import { Timestamp } from "firebase-admin/firestore";
 
 // 🔗 Route imports
 import stationRoutes from "./routes/stationRoutes.js";
-import rentalRoutes from "./routes/rentalRoutes.js";
+// import rentalRoutes from "./routes/rentalRoutes.js"; // ❌ Not needed
 import statsRoutes from "./routes/statsRoutes.js";
 import updateStationStats from "./jobs/station_stats.js";
 import customerRoutes from "./routes/customers.js";
@@ -121,26 +121,6 @@ app.post("/api/pay/:stationCode", async (req, res) => {
   }
 
   try {
-    // 🛡️ DUPLICATE PREVENTION: Check if phone already has active rental today
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const existingRental = await db
-      .collection("rentals")
-      .where("phoneNumber", "==", phoneNumber)
-      .where("status", "==", "rented")
-      .where("timestamp", ">=", Timestamp.fromDate(today))
-      .limit(1)
-      .get();
-
-    if (!existingRental.empty) {
-      console.log(
-        `⚠️ Duplicate blocked: ${phoneNumber} already has active rental`
-      );
-      return res.status(400).json({
-        error: "You already have an active rental. Please return it first.",
-      });
-    }
-
     const battery = await getAvailableBattery(imei);
     if (!battery) {
       return res.status(400).json({ error: "No available battery ≥ 60%" });
@@ -176,8 +156,8 @@ app.post("/api/pay/:stationCode", async (req, res) => {
     });
 
     const approved =
-      waafiRes.data.responseCode === "2001" &&
-      waafiRes.data.params?.state === "APPROVED";
+      waafiRes.data.responseCode === "2001" ||
+      waafiRes.data.responseCode == 2001;
 
     if (!approved) {
       return res.status(400).json({
@@ -186,7 +166,28 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       });
     }
 
-    // // 📝 Step 2: Log rental to Firestore
+    // 🔒 DUPLICATE PREVENTION: Check by Waafi transactionId
+    const { transactionId, issuerTransactionId, referenceId } =
+      waafiRes.data.params || {};
+
+    if (transactionId) {
+      const existingTx = await db
+        .collection("rentals")
+        .where("transactionId", "==", transactionId)
+        .limit(1)
+        .get();
+
+      if (!existingTx.empty) {
+        console.log(`⚠️ Duplicate Waafi transaction blocked: ${transactionId}`);
+        return res.json({
+          success: true,
+          message: "Payment already processed",
+          transactionId,
+        });
+      }
+    }
+
+    // 📝 Step 2: Log rental to Firestore (with transactionId to prevent duplicates)
     const rentalRef = await db.collection("rentals").add({
       imei,
       stationCode,
@@ -195,6 +196,9 @@ app.post("/api/pay/:stationCode", async (req, res) => {
       phoneNumber,
       amount: parseFloat(amount) || 0,
       status: "rented",
+      transactionId: transactionId || null,
+      issuerTransactionId: issuerTransactionId || null,
+      referenceId: referenceId || null,
       timestamp: Timestamp.now(),
     });
 
@@ -224,7 +228,7 @@ app.post("/api/pay/:stationCode", async (req, res) => {
 
 // 📦 Routes
 app.use("/api/stations", stationRoutes);
-app.use("/api/rentals", rentalRoutes);
+// app.use("/api/rentals", rentalRoutes); // ❌ Not needed
 app.use("/api/stats", statsRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/revenue", revenueRoutes);
@@ -240,30 +244,32 @@ setInterval(() => {
   updateStationStats();
 }, 15 * 60 * 1000);
 
-// 🧹 STARTUP CLEANUP: Delete ALL today's rentals (Dec 23, 2025)
+// 🧹 STARTUP CLEANUP: Delete rentals from today after 12:00pm (Dec 24, 2025)
 async function cleanupTodayRentals() {
-  console.log("🧹 Running startup cleanup - deleting ALL today's rentals...");
+  console.log("🧹 Running cleanup - deleting rentals after 12:00pm today...");
 
-  // Today's date range (Dec 23, 2025 UTC+3)
-  const todayStart = new Date("2025-12-23T00:00:00.000+03:00");
-  const todayEnd = new Date("2025-12-24T00:00:00.000+03:00");
+  // Dec 24, 2025 from 12:00pm (noon) UTC+3 to now
+  const startTime = new Date("2025-12-24T12:00:00.000+03:00");
+  const now = new Date();
 
   try {
-    const todaySnapshot = await db
+    const snapshot = await db
       .collection("rentals")
-      .where("timestamp", ">=", Timestamp.fromDate(todayStart))
-      .where("timestamp", "<", Timestamp.fromDate(todayEnd))
+      .where("timestamp", ">=", Timestamp.fromDate(startTime))
+      .where("timestamp", "<=", Timestamp.fromDate(now))
       .get();
 
-    if (todaySnapshot.empty) {
-      console.log("✅ No rentals found today");
+    if (snapshot.empty) {
+      console.log("✅ No rentals found after 12:00pm");
       return;
     }
 
-    console.log(`📊 Found ${todaySnapshot.size} rentals today - DELETING ALL`);
+    console.log(
+      `📊 Found ${snapshot.size} rentals after 12:00pm - DELETING ALL`
+    );
 
     let deletedCount = 0;
-    for (const doc of todaySnapshot.docs) {
+    for (const doc of snapshot.docs) {
       await doc.ref.delete();
       deletedCount++;
       console.log(`🗑️ Deleted: ${doc.id}`);
