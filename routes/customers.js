@@ -103,7 +103,7 @@ router.get("/monthly-by-imei/:imei", async (req, res) => {
 /* 📌 Global totals (all stations)                                    */
 /* ------------------------------------------------------------------ */
 
-// ✅ Daily total across ALL stations
+// ✅ Daily total across ALL stations (unique by transactionId)
 router.get("/daily-total", async (req, res) => {
   const { startTs, dateStr } = getDayBounds();
   try {
@@ -115,8 +115,15 @@ router.get("/daily-total", async (req, res) => {
 
     const uniqueCustomers = new Set();
     const stationSet = new Set();
+    const uniqueTransactions = new Set();
+
     snapshot.forEach((doc) => {
       const data = doc.data();
+      // Skip duplicates by transactionId
+      const txId = data.transactionId || doc.id;
+      if (uniqueTransactions.has(txId)) return;
+      uniqueTransactions.add(txId);
+
       if (data.phoneNumber) uniqueCustomers.add(data.phoneNumber);
       if (data.imei) stationSet.add(data.imei);
     });
@@ -124,7 +131,7 @@ router.get("/daily-total", async (req, res) => {
     res.json({
       date: dateStr,
       totalCustomersToday: uniqueCustomers.size,
-      totalRentalsToday: snapshot.size,
+      totalRentalsToday: uniqueTransactions.size,
       stations: stationSet.size,
     });
   } catch (err) {
@@ -133,7 +140,7 @@ router.get("/daily-total", async (req, res) => {
   }
 });
 
-// ✅ Monthly total across ALL stations
+// ✅ Monthly total across ALL stations (unique by transactionId)
 router.get("/monthly-total", async (req, res) => {
   const { startTs, monthKey } = getMonthBounds();
   try {
@@ -145,8 +152,15 @@ router.get("/monthly-total", async (req, res) => {
 
     const uniqueCustomers = new Set();
     const stationSet = new Set();
+    const uniqueTransactions = new Set();
+
     snapshot.forEach((doc) => {
       const data = doc.data();
+      // Skip duplicates by transactionId
+      const txId = data.transactionId || doc.id;
+      if (uniqueTransactions.has(txId)) return;
+      uniqueTransactions.add(txId);
+
       if (data.phoneNumber) uniqueCustomers.add(data.phoneNumber);
       if (data.imei) stationSet.add(data.imei);
     });
@@ -154,7 +168,7 @@ router.get("/monthly-total", async (req, res) => {
     res.json({
       month: monthKey,
       totalCustomersThisMonth: uniqueCustomers.size,
-      totalRentalsThisMonth: snapshot.size,
+      totalRentalsThisMonth: uniqueTransactions.size,
       stations: stationSet.size,
     });
   } catch (err) {

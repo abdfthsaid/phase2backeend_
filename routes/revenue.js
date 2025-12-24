@@ -13,17 +13,20 @@ const imeiToStationCode = {
   WSEP161741066503: "03",
 };
 
-// ✅ Helper: calculate unique rentals (no double count)
+// ✅ Helper: calculate unique rentals by transactionId (no double count)
 const calculateUniqueRevenue = (snapshot) => {
   let total = 0;
-  let uniqueDocs = new Set();
+  let uniqueTransactions = new Set();
   let missingAmountCount = 0;
 
   snapshot.forEach((doc) => {
-    if (!uniqueDocs.has(doc.id)) {
-      uniqueDocs.add(doc.id);
+    const data = doc.data();
+    // Use transactionId for uniqueness, fallback to doc.id
+    const txId = data.transactionId || doc.id;
 
-      const data = doc.data();
+    if (!uniqueTransactions.has(txId)) {
+      uniqueTransactions.add(txId);
+
       // Handle amount as number, string, or missing
       let amount = 0;
       if (data.amount !== undefined && data.amount !== null) {
@@ -45,7 +48,7 @@ const calculateUniqueRevenue = (snapshot) => {
     console.log(`⚠️ ${missingAmountCount} rentals missing amount field`);
   }
 
-  return { total, count: uniqueDocs.size };
+  return { total, count: uniqueTransactions.size };
 };
 
 // ✅ DAILY REVENUE FOR SINGLE STATION (by IMEI)
