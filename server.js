@@ -94,6 +94,18 @@ app.get("/", (req, res) => {
   res.send("🚀 Waafi backend is running!");
 });
 
+// 🕐 Server timezone info
+app.get("/api/timezone", (req, res) => {
+  const now = new Date();
+  res.json({
+    serverTime: now.toISOString(),
+    serverTimeLocal: now.toString(),
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    timezoneOffset: now.getTimezoneOffset(),
+    offsetHours: -now.getTimezoneOffset() / 60,
+  });
+});
+
 // 💳 Payment + rental logging + unlock battery
 app.post("/api/pay/:stationCode", async (req, res) => {
   const { stationCode } = req.params;
