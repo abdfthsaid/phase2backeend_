@@ -191,6 +191,34 @@ const { HEYCHARGE_API_KEY, HEYCHARGE_DOMAIN } = process.env;
 //   }
 // });
 
+// GET /api/stations/basic - MUST be before :imei routes!
+router.get("/basic", async (req, res) => {
+  try {
+    const stationsSnap = await db.collection("stations").get();
+
+    if (stationsSnap.empty) {
+      return res.status(404).json({ error: "No stations found ❌" });
+    }
+
+    const stations = stationsSnap.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id, // Document ID
+        imei: data.imei || "",
+        name: data.name || "Unnamed Station",
+        iccid: data.iccid || "Unknown",
+        location: data.location || "Not Set",
+        totalSlots: data.totalSlots || 0, // ✅ Add totalSlots
+      };
+    });
+
+    res.status(200).json({ stations });
+  } catch (error) {
+    console.error("❌ Error fetching basic station info:", error.message);
+    res.status(500).json({ error: "Failed to fetch station basics ❌" });
+  }
+});
+
 // GET all station stats
 router.get("/stats", async (req, res) => {
   try {
@@ -225,33 +253,6 @@ router.get("/stats/:imei", async (req, res) => {
   } catch (err) {
     console.error(`Get Station Stats Error (${imei}):`, err.message);
     return res.status(500).json({ error: "Failed to fetch station stats" });
-  }
-});
-
-router.get("/basic", async (req, res) => {
-  try {
-    const stationsSnap = await db.collection("stations").get();
-
-    if (stationsSnap.empty) {
-      return res.status(404).json({ error: "No stations found ❌" });
-    }
-
-    const stations = stationsSnap.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        id: doc.id, // Document ID
-        imei: data.imei || "",
-        name: data.name || "Unnamed Station",
-        iccid: data.iccid || "Unknown",
-        location: data.location || "Not Set",
-        totalSlots: data.totalSlots || 0, // ✅ Add totalSlots
-      };
-    });
-
-    res.status(200).json({ stations });
-  } catch (error) {
-    console.error("❌ Error fetching basic station info:", error.message);
-    res.status(500).json({ error: "Failed to fetch station basics ❌" });
   }
 });
 
