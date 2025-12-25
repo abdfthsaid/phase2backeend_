@@ -4,6 +4,54 @@ import { Timestamp } from "firebase-admin/firestore";
 
 const router = express.Router();
 
+// 🕐 Somalia timezone offset (UTC+3)
+const SOMALIA_OFFSET_HOURS = 3;
+
+// 🧠 Get day bounds in Somalia time (UTC+3)
+function getDayBoundsUTC3() {
+  const now = new Date();
+  const somaliaTime = new Date(
+    now.getTime() + SOMALIA_OFFSET_HOURS * 60 * 60 * 1000
+  );
+
+  const somaliaYear = somaliaTime.getUTCFullYear();
+  const somaliaMonth = somaliaTime.getUTCMonth();
+  const somaliaDay = somaliaTime.getUTCDate();
+
+  const startUtc = new Date(
+    Date.UTC(somaliaYear, somaliaMonth, somaliaDay) -
+      SOMALIA_OFFSET_HOURS * 60 * 60 * 1000
+  );
+  const dateStr = `${somaliaYear}-${String(somaliaMonth + 1).padStart(
+    2,
+    "0"
+  )}-${String(somaliaDay).padStart(2, "0")}`;
+
+  return { startUtc, dateStr };
+}
+
+// 🧠 Get month bounds in Somalia time (UTC+3)
+function getMonthBoundsUTC3() {
+  const now = new Date();
+  const somaliaTime = new Date(
+    now.getTime() + SOMALIA_OFFSET_HOURS * 60 * 60 * 1000
+  );
+
+  const somaliaYear = somaliaTime.getUTCFullYear();
+  const somaliaMonth = somaliaTime.getUTCMonth();
+
+  const startUtc = new Date(
+    Date.UTC(somaliaYear, somaliaMonth, 1) -
+      SOMALIA_OFFSET_HOURS * 60 * 60 * 1000
+  );
+  const monthKey = `${somaliaYear}-${String(somaliaMonth + 1).padStart(
+    2,
+    "0"
+  )}`;
+
+  return { startUtc, monthKey };
+}
+
 // ✅ IMEI to stationCode mapping
 const imeiToStationCode = {
   WSEP161721195358: "58",
@@ -51,7 +99,7 @@ const calculateUniqueRevenue = (snapshot) => {
   return { total, count: uniqueTransactions.size };
 };
 
-// ✅ DAILY REVENUE FOR SINGLE STATION (by IMEI)
+// ✅ DAILY REVENUE FOR SINGLE STATION (by IMEI) - UTC+3 Somalia
 router.get("/daily/:imei", async (req, res) => {
   const imei = req.params.imei;
   const stationCode = imeiToStationCode[imei];
@@ -60,14 +108,13 @@ router.get("/daily/:imei", async (req, res) => {
     return res.status(400).json({ error: `Unknown IMEI ${imei}` });
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const { startUtc, dateStr } = getDayBoundsUTC3();
 
   try {
     const snapshot = await db
       .collection("rentals")
       .where("stationCode", "==", stationCode)
-      .where("timestamp", ">=", Timestamp.fromDate(today))
+      .where("timestamp", ">=", Timestamp.fromDate(startUtc))
       .where("status", "in", ["rented", "returned"])
       .get();
 
@@ -78,7 +125,7 @@ router.get("/daily/:imei", async (req, res) => {
       stationCode,
       totalRevenueToday: total,
       totalRentalsToday: count,
-      date: today.toISOString().split("T")[0],
+      date: dateStr,
     });
   } catch (error) {
     console.error("❌ Error calculating daily revenue:", error);
@@ -86,15 +133,14 @@ router.get("/daily/:imei", async (req, res) => {
   }
 });
 
-// ✅ DAILY REVENUE FOR ALL STATIONS
+// ✅ DAILY REVENUE FOR ALL STATIONS - UTC+3 Somalia
 router.get("/daily", async (req, res) => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const { startUtc, dateStr } = getDayBoundsUTC3();
 
   try {
     const snapshot = await db
       .collection("rentals")
-      .where("timestamp", ">=", Timestamp.fromDate(today))
+      .where("timestamp", ">=", Timestamp.fromDate(startUtc))
       .where("status", "in", ["rented", "returned"])
       .get();
 
@@ -103,7 +149,7 @@ router.get("/daily", async (req, res) => {
     res.json({
       totalRevenueToday: total,
       totalRentalsToday: count,
-      date: today.toISOString().split("T")[0],
+      date: dateStr,
     });
   } catch (error) {
     console.error("❌ Error calculating total daily revenue:", error);
@@ -113,7 +159,7 @@ router.get("/daily", async (req, res) => {
   }
 });
 
-// ✅ MONTHLY REVENUE FOR SINGLE STATION (by IMEI)
+// ✅ MONTHLY REVENUE FOR SINGLE STATION (by IMEI) - UTC+3 Somalia
 router.get("/monthly/:imei", async (req, res) => {
   const imei = req.params.imei;
   const stationCode = imeiToStationCode[imei];
@@ -122,14 +168,13 @@ router.get("/monthly/:imei", async (req, res) => {
     return res.status(400).json({ error: `Unknown IMEI ${imei}` });
   }
 
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const { startUtc, monthKey } = getMonthBoundsUTC3();
 
   try {
     const snapshot = await db
       .collection("rentals")
       .where("stationCode", "==", stationCode)
-      .where("timestamp", ">=", Timestamp.fromDate(startOfMonth))
+      .where("timestamp", ">=", Timestamp.fromDate(startUtc))
       .where("status", "in", ["rented", "returned"])
       .get();
 
@@ -140,10 +185,7 @@ router.get("/monthly/:imei", async (req, res) => {
       stationCode,
       totalRevenueMonthly: total,
       totalRentalsThisMonth: count,
-      month: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
-        2,
-        "0"
-      )}`,
+      month: monthKey,
     });
   } catch (error) {
     console.error("❌ Error calculating monthly revenue:", error);
@@ -151,15 +193,14 @@ router.get("/monthly/:imei", async (req, res) => {
   }
 });
 
-// ✅ MONTHLY REVENUE FOR ALL STATIONS
+// ✅ MONTHLY REVENUE FOR ALL STATIONS - UTC+3 Somalia
 router.get("/monthly", async (req, res) => {
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const { startUtc, monthKey } = getMonthBoundsUTC3();
 
   try {
     const snapshot = await db
       .collection("rentals")
-      .where("timestamp", ">=", Timestamp.fromDate(startOfMonth))
+      .where("timestamp", ">=", Timestamp.fromDate(startUtc))
       .where("status", "in", ["rented", "returned"])
       .get();
 
@@ -168,10 +209,7 @@ router.get("/monthly", async (req, res) => {
     res.json({
       totalRevenueMonthly: total,
       totalRentalsThisMonth: count,
-      month: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
-        2,
-        "0"
-      )}`,
+      month: monthKey,
     });
   } catch (error) {
     console.error("❌ Error calculating total monthly revenue:", error);

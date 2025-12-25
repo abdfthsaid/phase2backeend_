@@ -5,29 +5,58 @@ import { Timestamp } from "firebase-admin/firestore";
 
 const router = express.Router();
 
-// 🧠 Helpers to compute Timestamp bounds for today/month
+// 🧠 Helpers to compute Timestamp bounds for today/month (UTC+3 Somalia time)
+const SOMALIA_OFFSET_HOURS = 3; // UTC+3
+
 function getDayBounds(date = new Date()) {
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
+  // Get current time in UTC+3 (Somalia)
+  const nowUtc = date.getTime();
+  const somaliaTime = new Date(nowUtc + SOMALIA_OFFSET_HOURS * 60 * 60 * 1000);
+
+  // Get start of day in Somalia time (midnight UTC+3)
+  const somaliaYear = somaliaTime.getUTCFullYear();
+  const somaliaMonth = somaliaTime.getUTCMonth();
+  const somaliaDay = somaliaTime.getUTCDate();
+
+  // Convert midnight Somalia back to UTC
+  const startUtc = new Date(
+    Date.UTC(somaliaYear, somaliaMonth, somaliaDay) -
+      SOMALIA_OFFSET_HOURS * 60 * 60 * 1000
+  );
+  const endUtc = new Date(startUtc.getTime() + 24 * 60 * 60 * 1000);
+
   return {
-    startTs: Timestamp.fromDate(start),
-    endTs: Timestamp.fromDate(end),
-    dateStr: start.toISOString().split("T")[0],
+    startTs: Timestamp.fromDate(startUtc),
+    endTs: Timestamp.fromDate(endUtc),
+    dateStr: `${somaliaYear}-${String(somaliaMonth + 1).padStart(
+      2,
+      "0"
+    )}-${String(somaliaDay).padStart(2, "0")}`,
   };
 }
 
 function getMonthBounds(date = new Date()) {
-  const start = new Date(date.getFullYear(), date.getMonth(), 1);
-  const end = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+  // Get current time in UTC+3 (Somalia)
+  const nowUtc = date.getTime();
+  const somaliaTime = new Date(nowUtc + SOMALIA_OFFSET_HOURS * 60 * 60 * 1000);
+
+  const somaliaYear = somaliaTime.getUTCFullYear();
+  const somaliaMonth = somaliaTime.getUTCMonth();
+
+  // Start of month in Somalia time, converted to UTC
+  const startUtc = new Date(
+    Date.UTC(somaliaYear, somaliaMonth, 1) -
+      SOMALIA_OFFSET_HOURS * 60 * 60 * 1000
+  );
+  const endUtc = new Date(
+    Date.UTC(somaliaYear, somaliaMonth + 1, 1) -
+      SOMALIA_OFFSET_HOURS * 60 * 60 * 1000
+  );
+
   return {
-    startTs: Timestamp.fromDate(start),
-    endTs: Timestamp.fromDate(end),
-    monthKey: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(
-      2,
-      "0"
-    )}`,
+    startTs: Timestamp.fromDate(startUtc),
+    endTs: Timestamp.fromDate(endUtc),
+    monthKey: `${somaliaYear}-${String(somaliaMonth + 1).padStart(2, "0")}`,
   };
 }
 
