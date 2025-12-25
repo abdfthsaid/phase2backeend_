@@ -256,49 +256,9 @@ setInterval(() => {
   updateStationStats();
 }, 15 * 60 * 1000);
 
-// 🧹 STARTUP CLEANUP: Delete rentals from today after 12:00pm (Dec 24, 2025)
-async function cleanupTodayRentals() {
-  console.log("🧹 Running cleanup - deleting rentals after 12:00pm today...");
-
-  // Dec 24, 2025 from 12:00pm (noon) UTC+3 to now
-  const startTime = new Date("2025-12-24T12:00:00.000+03:00");
-  const now = new Date();
-
-  try {
-    const snapshot = await db
-      .collection("rentals")
-      .where("timestamp", ">=", Timestamp.fromDate(startTime))
-      .where("timestamp", "<=", Timestamp.fromDate(now))
-      .get();
-
-    if (snapshot.empty) {
-      console.log("✅ No rentals found after 12:00pm");
-      return;
-    }
-
-    console.log(
-      `📊 Found ${snapshot.size} rentals after 12:00pm - DELETING ALL`
-    );
-
-    let deletedCount = 0;
-    for (const doc of snapshot.docs) {
-      await doc.ref.delete();
-      deletedCount++;
-      console.log(`🗑️ Deleted: ${doc.id}`);
-    }
-
-    console.log(`✅ Cleanup complete! Deleted ${deletedCount} rentals`);
-  } catch (err) {
-    console.error("❌ Cleanup error:", err.message);
-  }
-}
-
 // 🚀 Server start
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
-
-  // Run cleanup on startup
-  await cleanupTodayRentals();
 });
 
 // god makes
