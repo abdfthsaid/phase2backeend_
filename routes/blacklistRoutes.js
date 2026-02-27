@@ -1,6 +1,7 @@
 import express from "express";
 import db from "../config/firebase.js";
 import { Timestamp } from "firebase-admin/firestore";
+import { authenticateToken, requireAdmin } from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -25,8 +26,8 @@ router.get("/", async (req, res) => {
   }
 });
 
-// 🚫 ADD user to blacklist
-router.post("/", async (req, res) => {
+// 🚫 ADD user to blacklist (ADMIN ONLY)
+router.post("/", authenticateToken, requireAdmin, async (req, res) => {
   const { phoneNumber, reason, customerName } = req.body;
 
   if (!phoneNumber) {
@@ -101,8 +102,8 @@ router.get("/check/:phoneNumber", async (req, res) => {
   }
 });
 
-// 🚫 REMOVE user from blacklist
-router.delete("/:id", async (req, res) => {
+// 🚫 REMOVE user from blacklist (ADMIN ONLY)
+router.delete("/:id", authenticateToken, requireAdmin, async (req, res) => {
   const { id } = req.params;
 
   try {
