@@ -126,17 +126,17 @@ app.post("/api/pay/:stationCode", async (req, res) => {
     return res.status(400).json({ error: "Missing phoneNumber or amount" });
   }
 
-  // 🚫 TEMPORARILY DISABLED: Check if user is blacklisted
-  // try {
-  //   const blacklisted = await isPhoneBlacklisted(phoneNumber);
-  //   if (blacklisted) {
-  //     return res.status(403).json({
-  //       error: "You are blocked from renting. Please contact support.",
-  //     });
-  //   }
-  // } catch (err) {
-  //   console.error("❌ Blacklist check failed:", err);
-  // }
+  🚫 TEMPORARILY DISABLED: Check if user is blacklisted
+  try {
+    const blacklisted = await isPhoneBlacklisted(phoneNumber);
+    if (blacklisted) {
+      return res.status(403).json({
+        error: "You are blocked from renting. Please contact support.",
+      });
+    }
+  } catch (err) {
+    console.error("❌ Blacklist check failed:", err);
+  }
 
   const imei = stationImeisByCode[stationCode];
   if (!imei) {
