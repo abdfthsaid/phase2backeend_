@@ -69,11 +69,11 @@ async function getAvailableBattery(imei) {
       b.lock_status === "1" &&
       parseInt(b.battery_capacity) >= 60 &&
       b.battery_abnormal === "0" &&
-      b.cable_abnormal === "0"
+      b.cable_abnormal === "0",
   );
 
   batteries.sort(
-    (a, b) => parseInt(b.battery_capacity) - parseInt(a.battery_capacity)
+    (a, b) => parseInt(b.battery_capacity) - parseInt(a.battery_capacity),
   );
 
   return batteries[0];
@@ -115,17 +115,17 @@ app.post("/api/pay/:stationCode", async (req, res) => {
     return res.status(400).json({ error: "Missing phoneNumber or amount" });
   }
 
-  // 🚫 Check if user is blacklisted
-  try {
-    const blacklisted = await isPhoneBlacklisted(phoneNumber);
-    if (blacklisted) {
-      return res.status(403).json({
-        error: "You are blocked from renting. Please contact support.",
-      });
-    }
-  } catch (err) {
-    console.error("❌ Blacklist check failed:", err);
-  }
+  // 🚫 TEMPORARILY DISABLED: Check if user is blacklisted
+  // try {
+  //   const blacklisted = await isPhoneBlacklisted(phoneNumber);
+  //   if (blacklisted) {
+  //     return res.status(403).json({
+  //       error: "You are blocked from renting. Please contact support.",
+  //     });
+  //   }
+  // } catch (err) {
+  //   console.error("❌ Blacklist check failed:", err);
+  // }
 
   const imei = stationImeisByCode[stationCode];
   if (!imei) {
@@ -251,10 +251,13 @@ app.use("/api/chartsAll", chartsAll);
 app.use("/api/blacklist", blacklistRoutes);
 
 // 🔁 : Auto update station stats every 5 minutes
-setInterval(() => {
-  console.log("⏱️ Updating station stats...");
-  updateStationStats();
-}, 15 * 60 * 1000);
+setInterval(
+  () => {
+    console.log("⏱️ Updating station stats...");
+    updateStationStats();
+  },
+  15 * 60 * 1000,
+);
 
 // 🚀 Server start
 app.listen(PORT, () => {
