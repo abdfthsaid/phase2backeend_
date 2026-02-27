@@ -1,4 +1,7 @@
 
 danab-admin-key.json
+new-firebase-key-v2.json
+firebase-b64-v2.txt
+test-firebase.js
 node_modules/
 .env

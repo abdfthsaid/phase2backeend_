@@ -1,12 +1,19 @@
 import express from "express";
 import db from "../config/firebase.js";
+import { Timestamp } from "firebase-admin/firestore";
 
 const router = express.Router();
+
+// Helper: extract last 9 digits from any phone format
+function normalizePhone(phone) {
+  const digits = (phone || "").replace(/\D/g, "");
+  return digits.slice(-9);
+}
 
 // 🚫 GET all blacklisted users
 router.get("/", async (req, res) => {
   try {
-    const snapshot = await db.collection("blacklist").get();
+    const snapshot = await db.collection("blacklistnumbers").get();
     const blacklist = snapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
@@ -27,10 +34,13 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    // Check if already blacklisted
+    const normalizedPhone = normalizePhone(phoneNumber);
+
+    // Check if already blacklisted (by normalized phone)
     const existing = await db
-      .collection("blacklist")
-      .where("phoneNumber", "==", phoneNumber)
+      .collection("blacklistnumbers")
+      .where("normalizedPhone", "==", normalizedPhone)
+      .limit(1)
       .get();
 
     if (!existing.empty) {
@@ -39,11 +49,12 @@ router.post("/", async (req, res) => {
         .json({ error: "Phone number already blacklisted" });
     }
 
-    const docRef = await db.collection("blacklist").add({
+    const docRef = await db.collection("blacklistnumbers").add({
       phoneNumber,
+      normalizedPhone,
       reason: reason || "Did not return battery",
       customerName: customerName || "",
-      createdAt: new Date(),
+      createdAt: Timestamp.now(),
     });
 
     res.json({
@@ -57,37 +68,29 @@ router.post("/", async (req, res) => {
   }
 });
 
-// 🚫 CHECK if phone number is blacklisted (checks ALL blacklist entries)
+// 🚫 CHECK if phone number is blacklisted (uses normalizedPhone for fast query)
 router.get("/check/:phoneNumber", async (req, res) => {
   const { phoneNumber } = req.params;
+  const normalized = normalizePhone(phoneNumber);
 
-  // Clean the input phone number - get just digits
-  const inputDigits = phoneNumber.replace(/\D/g, "");
-  // Get last 9 digits (core number without country code)
-  const inputCore = inputDigits.slice(-9);
+  if (normalized.length < 8) {
+    return res.status(400).json({ error: "Invalid phone number" });
+  }
 
-  console.log(`🔍 Checking blacklist for: ${phoneNumber}, core: ${inputCore}`);
+  console.log(
+    `🔍 Checking blacklist for: ${phoneNumber}, normalized: ${normalized}`,
+  );
 
   try {
-    // Get ALL blacklist entries and compare
-    const snapshot = await db.collection("blacklist").get();
+    const snapshot = await db
+      .collection("blacklistnumbers")
+      .where("normalizedPhone", "==", normalized)
+      .limit(1)
+      .get();
 
-    for (const doc of snapshot.docs) {
-      const blacklistedPhone = doc.data().phoneNumber || "";
-      // Clean blacklisted phone - get just digits
-      const blacklistDigits = blacklistedPhone.replace(/\D/g, "");
-      // Get last 9 digits
-      const blacklistCore = blacklistDigits.slice(-9);
-
-      console.log(
-        `🔍 Comparing: input="${inputCore}" vs blacklist="${blacklistCore}" (${blacklistedPhone})`
-      );
-
-      // Compare core numbers (last 9 digits)
-      if (inputCore === blacklistCore && inputCore.length >= 8) {
-        console.log(`🚫 Blacklisted found! ${blacklistedPhone}`);
-        return res.json({ phoneNumber, isBlacklisted: true });
-      }
+    if (!snapshot.empty) {
+      console.log(`🚫 Blacklisted found! ${phoneNumber}`);
+      return res.json({ phoneNumber, isBlacklisted: true });
     }
 
     console.log(`✅ Not blacklisted: ${phoneNumber}`);
@@ -103,7 +106,7 @@ router.delete("/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
-    await db.collection("blacklist").doc(id).delete();
+    await db.collection("blacklistnumbers").doc(id).delete();
     res.json({ success: true, message: "User removed from blacklist" });
   } catch (err) {
     console.error("❌ Error removing from blacklist:", err);
@@ -113,9 +116,13 @@ router.delete("/:id", async (req, res) => {
 
 // 🔧 Helper function to check blacklist (exported for use in other routes)
 export async function isPhoneBlacklisted(phoneNumber) {
+  const normalized = normalizePhone(phoneNumber);
+  if (normalized.length < 8) return false;
+
   const snapshot = await db
-    .collection("blacklist")
-    .where("phoneNumber", "==", phoneNumber)
+    .collection("blacklistnumbers")
+    .where("normalizedPhone", "==", normalized)
+    .limit(1)
     .get();
   return !snapshot.empty;
 }

@@ -7,6 +7,7 @@ import cors from "cors";
 import bodyParser from "body-parser";
 import { v4 as uuidv4 } from "uuid";
 import { Timestamp } from "firebase-admin/firestore";
+import rateLimit from "express-rate-limit";
 
 // 🔗 Route imports
 import stationRoutes from "./routes/stationRoutes.js";
@@ -44,6 +45,16 @@ const {
 
 // 🛠️ App setup
 const app = express();
+
+// 🚫 Rate limiting for blacklist API (prevent spam)
+const blacklistLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 10, // limit each IP to 10 requests per minute
+  message: { error: "Too many blacklist requests, please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 app.use(cors());
 app.use(bodyParser.json());
 
@@ -248,7 +259,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/charts", chartsRoute);
 app.use("/api/chartsAll", chartsAll);
-app.use("/api/blacklist", blacklistRoutes);
+app.use("/api/blacklist", blacklistLimiter, blacklistRoutes);
 
 // 🔁 : Auto update station stats every 5 minutes
 setInterval(
