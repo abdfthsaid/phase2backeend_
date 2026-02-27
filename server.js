@@ -126,7 +126,7 @@ app.post("/api/pay/:stationCode", async (req, res) => {
     return res.status(400).json({ error: "Missing phoneNumber or amount" });
   }
 
-  🚫 TEMPORARILY DISABLED: Check if user is blacklisted
+ // 🚫 TEMPORARILY DISABLED: Check if user is blacklisted
   try {
     const blacklisted = await isPhoneBlacklisted(phoneNumber);
     if (blacklisted) {
