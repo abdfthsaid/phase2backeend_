@@ -11,8 +11,8 @@ function normalizePhone(phone) {
   return digits.slice(-9);
 }
 
-// 🚫 GET all blacklisted users
-router.get("/", async (req, res) => {
+// 🚫 GET all blacklisted users (ADMIN ONLY)
+router.get("/", authenticateToken, requireAdmin, async (req, res) => {
   try {
     const snapshot = await db.collection("blacklistnumbers").get();
     const blacklist = snapshot.docs.map((doc) => ({

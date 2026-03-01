@@ -1,14 +1,15 @@
 import express from "express";
 import jwt from "jsonwebtoken";
 import db from "../config/firebase.js";
+import { authenticateToken, requireAdmin } from "../middleware/auth.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "danab_power_secret_key_2024";
 const TOKEN_EXPIRY = "1h"; // 1 hour
 
 const router = express.Router();
 
-// Add a new user with unique username and email and role validation
-router.post("/add", async (req, res) => {
+// Add a new user with unique username and email and role validation (ADMIN ONLY)
+router.post("/add", authenticateToken, requireAdmin, async (req, res) => {
   const { username, password, role, email } = req.body;
 
   if (!username || !password || !role || !email) {
@@ -57,8 +58,8 @@ router.post("/add", async (req, res) => {
   }
 });
 
-// Update user by id or username (partial updates allowed)
-router.put("/update", async (req, res) => {
+// Update user by id or username (partial updates allowed) (ADMIN ONLY)
+router.put("/update", authenticateToken, requireAdmin, async (req, res) => {
   const { id, username } = req.query;
   const updates = req.body;
 
@@ -132,8 +133,8 @@ router.put("/update", async (req, res) => {
   }
 });
 
-// Delete user by id or username
-router.delete("/delete", async (req, res) => {
+// Delete user by id or username (ADMIN ONLY)
+router.delete("/delete", authenticateToken, requireAdmin, async (req, res) => {
   const { id, username } = req.query;
 
   if (!id && !username) {
@@ -169,8 +170,8 @@ router.delete("/delete", async (req, res) => {
   }
 });
 
-// Get all users
-router.get("/all", async (req, res) => {
+// Get all users (ADMIN ONLY)
+router.get("/all", authenticateToken, requireAdmin, async (req, res) => {
   try {
     const snapshot = await db.collection("system_users").get();
     const users = snapshot.docs.map((doc) => ({
@@ -184,8 +185,8 @@ router.get("/all", async (req, res) => {
   }
 });
 
-// Get one user by id or username
-router.get("/one", async (req, res) => {
+// Get one user by id or username (ADMIN ONLY)
+router.get("/one", authenticateToken, requireAdmin, async (req, res) => {
   const { id, username } = req.query;
 
   if (!id && !username) {
