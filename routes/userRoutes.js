@@ -1,10 +1,20 @@
 import express from "express";
 import jwt from "jsonwebtoken";
+import rateLimit from "express-rate-limit";
 import db from "../config/firebase.js";
 import { authenticateToken, requireAdmin } from "../middleware/auth.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "danab_power_secret_key_2024";
 const TOKEN_EXPIRY = "1h"; // 1 hour
+
+// 🚫 Rate limiting for login endpoint (prevent brute-force attacks)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // limit each IP to 5 login attempts per 15 minutes
+  message: { error: "Too many login attempts, please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const router = express.Router();
 
@@ -224,8 +234,8 @@ router.get("/one", authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
-// / Login route
-router.post("/login", async (req, res) => {
+// / Login route (with rate limiting to prevent brute-force attacks)
+router.post("/login", loginLimiter, async (req, res) => {
   const { username, password } = req.body;
 
   if (!username || !password) {
