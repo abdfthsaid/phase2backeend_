@@ -55,6 +55,15 @@ const blacklistLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// 🚫 Rate limiting for admin dashboard endpoints (prevent spam)
+const dashboardLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 60, // limit each IP to 60 requests per minute (1 per second)
+  message: { error: "Too many requests, please slow down." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 app.use(cors());
 app.use(bodyParser.json());
 
@@ -250,15 +259,15 @@ app.post("/api/pay/:stationCode", async (req, res) => {
 });
 
 // 📦 Routes
-app.use("/api/stations", stationRoutes);
+app.use("/api/stations", dashboardLimiter, stationRoutes);
 // app.use("/api/rentals", rentalRoutes); // ❌ Not needed
-app.use("/api/stats", statsRoutes);
-app.use("/api/customers", customerRoutes);
-app.use("/api/revenue", revenueRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/transactions", transactionRoutes);
-app.use("/api/charts", chartsRoute);
-app.use("/api/chartsAll", chartsAll);
+app.use("/api/stats", dashboardLimiter, statsRoutes);
+app.use("/api/customers", dashboardLimiter, customerRoutes);
+app.use("/api/revenue", dashboardLimiter, revenueRoutes);
+app.use("/api/users", dashboardLimiter, userRoutes);
+app.use("/api/transactions", dashboardLimiter, transactionRoutes);
+app.use("/api/charts", dashboardLimiter, chartsRoute);
+app.use("/api/chartsAll", dashboardLimiter, chartsAll);
 app.use("/api/blacklist", blacklistLimiter, blacklistRoutes);
 
 // � Express error handling middleware (must be last)
@@ -270,7 +279,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// �🔁 : Auto update station stats every 5 minutes
+// �� : Auto update station stats every 5 minutes
 setInterval(
   async () => {
     try {
