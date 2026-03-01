@@ -67,6 +67,18 @@ const dashboardLimiter = rateLimit({
 app.use(cors());
 app.use(bodyParser.json());
 
+// 📊 Request logging middleware (temporary for debugging)
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    console.log(
+      `${req.method} ${req.path} - ${res.statusCode} - ${duration}ms - IP: ${req.ip}`,
+    );
+  });
+  next();
+});
+
 // 🏷️ Station code to IMEI map
 const stationImeisByCode = {
   58: STATION_CASTELLO_TALEEX,
