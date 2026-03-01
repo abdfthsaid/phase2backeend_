@@ -126,7 +126,7 @@ app.post("/api/pay/:stationCode", async (req, res) => {
     return res.status(400).json({ error: "Missing phoneNumber or amount" });
   }
 
- // 🚫 TEMPORARILY DISABLED: Check if user is blacklisted
+  // 🚫 TEMPORARILY DISABLED: Check if user is blacklisted
   try {
     const blacklisted = await isPhoneBlacklisted(phoneNumber);
     if (blacklisted) {
@@ -261,18 +261,60 @@ app.use("/api/charts", chartsRoute);
 app.use("/api/chartsAll", chartsAll);
 app.use("/api/blacklist", blacklistLimiter, blacklistRoutes);
 
-// 🔁 : Auto update station stats every 5 minutes
+// � Express error handling middleware (must be last)
+app.use((err, req, res, next) => {
+  console.error("❌ Express error:", err.stack);
+  res.status(500).json({
+    error: "Internal server error",
+    message: err.message,
+  });
+});
+
+// �🔁 : Auto update station stats every 5 minutes
 setInterval(
-  () => {
-    console.log("⏱️ Updating station stats...");
-    updateStationStats();
+  async () => {
+    try {
+      console.log("⏱️ Updating station stats...");
+      await updateStationStats();
+    } catch (err) {
+      console.error("❌ Station stats update failed:", err.message);
+    }
   },
   15 * 60 * 1000,
 );
 
+// 🚨 Global error handlers
+process.on("uncaughtException", (err) => {
+  console.error("❌ UNCAUGHT EXCEPTION:", err);
+  console.error(err.stack);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("❌ UNHANDLED REJECTION at:", promise);
+  console.error("Reason:", reason);
+});
+
 // 🚀 Server start
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
 });
+
+// 🛑 Graceful shutdown
+const gracefulShutdown = (signal) => {
+  console.log(`\n${signal} received. Closing server gracefully...`);
+  server.close(() => {
+    console.log("✅ Server closed");
+    process.exit(0);
+  });
+
+  setTimeout(() => {
+    console.error("⚠️ Forced shutdown after timeout");
+    process.exit(1);
+  }, 10000);
+};
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 // god makes
